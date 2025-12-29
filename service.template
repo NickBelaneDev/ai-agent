@@ -1,0 +1,19 @@
+[Unit]
+Description=MC-Gemini FastAPI Service
+After=network.target
+
+[Service]
+User=mc-gemini-user
+Group=mc-gemini-user
+
+WorkingDirectory=/opt/srv/mc-gemini/main/mc-gemini
+
+ExecStart=/opt/srv/mc-gemini/main/mc-gemini/.venv/bin/gunicorn main:app --bind 0.0.0.0:8000 --workers 4 --worker-class uvicorn.workers.UvicornWorker
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

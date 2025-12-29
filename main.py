@@ -56,4 +56,4 @@ if __name__ == "__main__":
     # In einer Produktionsumgebung würdest du den Server anders starten,
     # z.B. mit: `gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app`
     print("Starting FastAPI server... Go to 0.0.0.0")
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
