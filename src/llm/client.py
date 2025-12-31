@@ -8,6 +8,7 @@ from src.config.settings import GEMINI_API_KEY
 # Import the config loader directly
 from src.config.config_loader import load_config
 from src.llm.registry import tool_registry
+from src.config.logging_config import logger
 
 # --- Global Instances ---
 # Load the LLM configuration here, breaking the circular import.
@@ -32,7 +33,7 @@ class HomeAgent:
                     )
 
         except Exception as e:
-            print(f"Failed to create chat!\n{e}")
+            logger.error(f"Failed to create chat!\n{e}")
             return False
 
     def ask(self, prompt: str):
@@ -43,7 +44,7 @@ class HomeAgent:
                 config=self.config
             ).text
         except Exception as e:
-            print(f"Failed to answer!\n{e}")
+            logger.error(f"Failed to answer!\n{e}")
             return False
 
 async def process_chat_turn(chat: types.UserContent, user_prompt: str) -> str:
@@ -62,8 +63,8 @@ async def process_chat_turn(chat: types.UserContent, user_prompt: str) -> str:
         response = chat.send_message(user_prompt)
 
         # This loop continues as long as the model requests function calls.
-        # It has a safety break after 5 iterations to prevent infinite loops.
-        for _ in range(5):  # Max 5 sequential function calls
+        _MAX_LOOPS: int = 5
+        for _ in range(_MAX_LOOPS):
             part = response.parts[0]
             if not part.function_call:
                 # If there's no function call, we have our final text response.
@@ -72,7 +73,7 @@ async def process_chat_turn(chat: types.UserContent, user_prompt: str) -> str:
             # --- Execute the function call ---
             function_call = part.function_call
             function_name = function_call.name
-            print(f"LLM wants to call function: {function_name}({dict(function_call.args)})")
+            logger.info(f"LLM wants to call function: {function_name}({dict(function_call.args)})")
 
             try:
                 # 1. Look up the implementation and call it with the provided arguments
@@ -88,7 +89,7 @@ async def process_chat_turn(chat: types.UserContent, user_prompt: str) -> str:
                 )
 
             except Exception as e:
-                print(f"Error during function call '{function_name}': {e}")
+                logger.error(f"Error during function call '{function_name}': {e}")
                 # Return the error to the user to avoid getting stuck
                 return f"Error executing tool {function_name}: {e}"
 
@@ -96,7 +97,6 @@ async def process_chat_turn(chat: types.UserContent, user_prompt: str) -> str:
         return response.parts[0].text if response.parts and response.parts[0].text else ""
 
     except Exception as e:
-        print(f"An error occurred while processing chat turn: {e}")
+        logger.error(f"An error occurred while processing chat turn: {e}")
         # Re-raise the exception to be handled by the API layer
         raise
-            

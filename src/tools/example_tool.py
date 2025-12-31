@@ -1,3 +1,8 @@
+# This is an example tool to showcase how to create your own.
+# We create a singleton of the tool, which you will further import to your 'ToolRegistry' Class
+#
+
+
 import json
 
 from google.genai import types

@@ -5,6 +5,7 @@ from google.genai import types
 from pathlib import Path
 
 from src.llm.registry import tool_registry
+from src.config.logging_config import logger
 
 # Construct an absolute path to the config file relative to this script's location.
 CONFIG_PATH = Path(__file__).parent / "home_agent_config.toml"
@@ -31,7 +32,7 @@ def load_config() -> LLMConfigModel:
     """Loads and returns a BaseModel of the config.toml."""
     with open(CONFIG_PATH, "rb") as f:
         raw = tomli.load(f)
-    print(f"Configuration loaded from: {CONFIG_PATH}")
+    logger.info(f"Configuration loaded from: {CONFIG_PATH}")
     return LLMConfigModel(**raw["config"])
 
 

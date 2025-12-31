@@ -4,6 +4,7 @@ from google import genai
 
 from src.config.settings import GEMINI_API_KEY, TIMEOUT_SECONDS
 from src.llm.client import HomeAgent, process_chat_turn
+from src.config.logging_config import logger
 
 class SmartGeminiBackend:
     """
@@ -25,26 +26,26 @@ class SmartGeminiBackend:
             last_active = self.sessions[player_name]['last_active']
 
             if (current_time - last_active) > TIMEOUT_SECONDS:
-                print(f"Session for {player_name} has expired. Starting a new context.")
+                logger.info(f"Session for {player_name} has expired. Starting a new context.")
                 del self.sessions[player_name]
             else:
                 return self.sessions[player_name]['chat']
 
 
         if player_name not in self.sessions:
-            print(f"Creating a new chat for {player_name}...")
+            logger.info(f"Creating a new chat for {player_name}...")
             new_chat = self.agent.get_chat()
 
             self.sessions[player_name] = {
                 'chat': new_chat,
                 'last_active': current_time
             }
-            print(f"New chat for {player_name} created!\n")
+            logger.info(f"New chat for {player_name} created!")
 
         return self.sessions[player_name]['chat']
 
     async def generate_content(self, prompt: str) -> str:
-        print(f"generate_content: {prompt}")
+        logger.debug(f"generate_content: {prompt}")
         return self.agent.ask(prompt)
 
     async def chat(self, player_name: str, prompt: str) -> str:
@@ -55,9 +56,9 @@ class SmartGeminiBackend:
         to make it suitable for display in Minecraft chat.
         """
         chat_session = self._get_clean_session(player_name)
-        print(f"chat: {player_name=}, \n{prompt=}")
+        logger.debug(f"chat: {player_name=}, \n{prompt=}")
         response = await process_chat_turn(chat_session, prompt)
-        print(f"response: {response}")
+        logger.debug(f"response: {response}")
         self.sessions[player_name]['last_active'] = time.time()
 
         # Split the response by newlines to create separate chat messages.
@@ -73,12 +74,12 @@ class SmartGeminiBackend:
         ]
         for player in to_delete:
             del self.sessions[player]
-            print(f"Cleaned up inactive session for {player}.")
+            logger.info(f"Cleaned up inactive session for {player}.")
 
 # A small test function for the chat service.
 async def main():
     """Main async function to run the chat client for testing."""
-    print("Starting SmartGeminiBackend test client...")
+    logger.info("Starting SmartGeminiBackend test client...")
     gemini = SmartGeminiBackend(GEMINI_API_KEY)
 
     while True:
@@ -88,11 +89,13 @@ async def main():
         response_lines = await gemini.chat("Player1", user_prompt)
         
         # Print each line of the response, simulating how Minecraft would show it.
-        for line in response_lines:
-            print(f"LLM: {line}")
+        # We keep print here as it is the UI for the test client
+        if isinstance(response_lines, list):
+             for line in response_lines:
+                print(f"LLM: {line}")
+        else:
+             print(f"LLM: {response_lines}")
 
 if __name__ == "__main__":
     # To run an async function from the top level, you use asyncio.run()
     asyncio.run(main())
-
-        
