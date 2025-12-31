@@ -3,7 +3,6 @@ from typing import Callable, Dict, List
 
 # Import your tool definitions here.
 # As you create more tools in the `src/tools/` directory, you'll import them here.
-from src.tools.example_tool import find_recipes, find_recipes_declaration
 
 
 class ToolRegistry:

@@ -1,13 +1,12 @@
 services:
-  mc-gemini:
+  gemini-api:
     build: .
     container_name: gemini-api
     command: uvicorn main:app --host 0.0.0.0 --port 8083 --reload
     ports:
-      - "8083:8000"
+      - "8083:8083"
     env_file:
       - .env
     restart: always
     volumes:
-      # Optional: Mount src for development if you want hot-reloading to work inside Docker
-      - ./src:/app/src
+      - /opt/docker/gemini-api:/app
