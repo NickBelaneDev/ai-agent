@@ -3,9 +3,14 @@ from src.config.settings import env_settings
 
 # 1. Erstelle die Engine (Der Motor)
 # "check_same_thread": False ist speziell für SQLite wichtig
+
+connect_args = {}
+if "sqlite" in env_settings.DATABASE_URL:
+    connect_args = {"check_same_thread": False}
+
 engine = create_async_engine(
     env_settings.DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in env_settings.DATABASE_URL else {}
+    connect_args=connect_args
 )
 
 # 2. Session Factory (Die Fabrik für Verbindungen)
