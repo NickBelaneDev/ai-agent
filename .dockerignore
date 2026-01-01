@@ -4,4 +4,4 @@ __pycache__
 .env
 .idea
 *.pyc
-/playground/
+/notes/
