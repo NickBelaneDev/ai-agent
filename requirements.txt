@@ -8,3 +8,4 @@ fastapi~=0.123.5
 google-genai
 gunicorn
 pydantic-settings
+sqlalchemy

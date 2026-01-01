@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class EnvSettings(BaseSettings):
     GEMINI_API_KEY: str
+    DATABASE_URL: str = "sqlite+aiosqlite:///./chat_database.db"
     
     # Optional: Allow overriding paths via environment variables
     PROJECT_ROOT: Path | None = None

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from src.config.settings import env_settings
 from src.services.chat_service import SmartGeminiBackend
 from src.config.logging_config import logger
-
+from src.db.connection import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -15,6 +15,9 @@ async def lifespan(app: FastAPI):
     Initializes the SmartGeminiBackend on startup and stores it in the app state.
     """
     logger.info("Application startup...")
+    await init_db()
+    logger.info("Database initialized.")
+
     gemini_backend = SmartGeminiBackend(env_settings.GEMINI_API_KEY)
     app.state.gemini_backend = gemini_backend
     logger.info("SmartGeminiBackend initialized and attached to app state.")
@@ -36,7 +39,7 @@ def get_gemini_backend(request: Request) -> SmartGeminiBackend:
 
 class ChatRequest(BaseModel):
     """Defines the structure for a chat request body."""
-    player_name: str
+    user_name: str
     prompt: str
 
 @app.get("/")
@@ -51,27 +54,25 @@ async def generate_content(prompt: str,
     return {"response": response}
 
 @app.post("/gemini/chat")
-async def chat_json(user_name: str,
-                    prompt: str,
+async def chat_json(request: ChatRequest,
                     gemini: SmartGeminiBackend = Depends(get_gemini_backend)):
     """
     Receives a chat prompt and returns the response as a JSON array of strings,
     with each string being a line of the response.
     """
-    logger.info(f">> Incoming JSON request: player='{user_name}', prompt='{prompt}'")
-    response = await gemini.chat(user_name, prompt)
+    logger.info(f">> Incoming JSON request: player='{request.user_name}', prompt='{request.prompt}'")
+    response = await gemini.chat(request.user_name, request.prompt)
     return {"response": response}
 
 @app.post("/gemini/chat/text")
-async def chat_text(user_name: str,
-                    prompt: str,
+async def chat_text(request: ChatRequest,
                     gemini: SmartGeminiBackend = Depends(get_gemini_backend)):
     """
     Receives a chat prompt and returns the response as a single plain text block,
     with lines separated by newline characters.
     """
-    logger.info(f">> Incoming Text request: player='{user_name}', prompt='{prompt}'")
-    response = await gemini.chat(user_name, prompt)
+    logger.info(f">> Incoming Text request: player='{request.user_name}', prompt='{request.prompt}'")
+    response = await gemini.chat(request.user_name, request.prompt)
     # Join the list of lines into a single string with newlines for the PlainTextResponse
     logger.debug(f"response: {response}")
     return PlainTextResponse(response)
