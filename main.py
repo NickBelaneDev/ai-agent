@@ -19,6 +19,7 @@ async def verify_api_token(x_auth_token: str = Header(alias="X-Auth-Token")):
             detail="Zugriff verweigert: Ungültiger Token."
         )
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
