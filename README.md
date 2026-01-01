@@ -1,74 +1,98 @@
-# mc-gemini
+# AI Agents - Rapid Gemini API Wrapper
 
-## Description
+## Overview
 
-`mc-gemini` is a project that integrates Google's Gemini API into Minecraft, allowing players to interact with an AI through a chat command. This enables a wide range of possibilities, from answering questions to generating content directly within the game.
+**AI Agents** is a lightweight, flexible boilerplate designed to help you rapidly deploy a custom API endpoint for Google's Gemini models. It serves as a playground and a solid foundation for building your own AI assistants.
 
-## How it Works
+The core philosophy is simplicity and extensibility: **You provide the tools and the context, and this project provides the infrastructure.**
 
-The project consists of two main components:
+Whether you want to build a smart home controller, a Minecraft bot, a personal coding assistant, or a "board computer" for an embedded display, this project lets you focus on *what* your agent can do, rather than *how* to connect it to the web.
 
-1.  **FastAPI Backend:** A Python-based web server that acts as a bridge between the Minecraft server and the Gemini API. It receives requests from the game, forwards them to the Gemini API, and returns the AI's response.
-2.  **Skript Plugin:** A script for the Skript plugin on a Minecraft server. This script defines the in-game command that players use to interact with the AI and handles the communication with the FastAPI backend.
+## Key Features
 
-The architecture is as follows:
-`Minecraft Server (with Skript) -> FastAPI Backend -> Gemini API`
+*   **Instant API:** Get a production-ready FastAPI server up and running in minutes.
+*   **Tool-First Design:** Easily "feed" your agent with custom Python functions (tools). The system handles the complex function calling loop automatically.
+*   **Context Aware:** Built-in session management keeps track of conversations per user, so your agent remembers what was just said.
+*   **Configurable Persona:** Define your agent's personality, constraints, and system instructions via a simple TOML file.
+*   **Dockerized:** Deploy anywhere with the included Docker setup.
 
-## Components
+## How It Works
 
-### FastAPI Backend
+1.  **Define a Tool:** Write a standard Python function (e.g., `turn_on_lights()`, `query_database()`).
+2.  **Register It:** Add your function to the `ToolRegistry`.
+3.  **Chat:** Send a prompt to the API. Gemini decides if it needs to use your tool, the backend executes it, and the result is fed back to the AI for the final response.
 
-The backend is a simple FastAPI application that exposes an endpoint to receive chat prompts from the Minecraft server. It manages chat sessions for each player, ensuring that conversations have context.
+## Getting Started
 
--   **`main.py`**: The main entry point of the FastAPI application.
--   **`src/services/chat_service.py`**: Handles the logic for managing chat sessions and communicating with the Gemini API.
--   **`src/llm/client.py`**: The client for the Gemini API.
+### Prerequisites
 
-### Skript Plugin
+*   Python 3.12+
+*   A Google Gemini API Key
 
-The `ask_ai.sk` script defines the `/askai` command in the game. When a player uses this command, the script sends an HTTP request to the FastAPI backend with the player's prompt. The response from the backend is then formatted and displayed in the in-game chat.
+### Quick Start
 
--   **`src/skript-lang/ask_ai.sk`**: The Skript file to be placed in the Minecraft server's `plugins/Skript/scripts` directory.
-
-## Setup and Installation
-
-### Backend
-
-1.  **Clone the repository:**
+1.  **Clone & Install:**
     ```bash
-    git clone https://github.com/your-username/mc-gemini.git
-    cd mc-gemini
-    ```
-2.  **Install the dependencies:**
-    ```bash
+    git clone <repository-url>
+    cd ai-agents
     pip install -r requirements.txt
     ```
-3.  **Set up your Gemini API key:**
-    -   Create a `.env` file in the root directory.
-    -   Add your Gemini API key to the `.env` file:
-        ```
-        GEMINI_API_KEY="your_api_key"
-        ```
-4.  **Run the backend server:**
-    For a production environment, use `uvicorn` to run the application:
-    ```bash
-    uvicorn main:app --host 0.0.0.0 --port 8000
+
+2.  **Configure:**
+    Create a `.env` file and add your API key:
+    ```env
+    GEMINI_API_KEY="your_api_key_here"
     ```
 
-### Skript Plugin
+3.  **Run:**
+    ```bash
+    # For development
+    uvicorn main:app --reload
+    
+    # For production
+    gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+    ```
 
-1.  **Install the Skript plugin** on your Minecraft server.
-2.  **Place the `ask_ai.sk` script** in the `plugins/Skript/scripts` directory of your server.
-3.  **Reload the scripts** in-game with the command `/sk reload all`.
+4.  **Interact:**
+    Open your browser to `http://127.0.0.1:8000/docs` to test the endpoints.
 
-## Usage
+## Customization
 
-Once the backend is running and the Skript plugin is set up, you can use the `/askai` command in Minecraft to interact with the AI.
+### 1. Giving your Agent a Personality
+Edit `src/config/home_agent_config.toml` to change the system instructions.
+```toml
+[config]
+system_instruction="You are a sarcastic robot assistant."
+model="gemini-1.5-flash"
+```
 
-**Syntax:**
-`/askai <your_prompt>`
+### 2. Adding Capabilities (Tools)
+This is where the magic happens. To give your agent new powers:
 
-**Example:**
-`/askai What is the crafting recipe for a diamond pickaxe?`
+1.  **Create a Tool File:** Add a new file in `src/llm/tools/` (e.g., `my_tools.py`).
+2.  **Define the Function:** Write your Python logic.
+3.  **Define the Schema:** Create a `types.FunctionDeclaration` so Gemini knows how to use it.
+4.  **Register:** Import your tool in `src/llm/registry.py` and add it to the list.
 
-The AI's response will be displayed in the chat.
+*See `src/llm/tools/example_tool.py` for a complete reference.*
+
+## API Endpoints
+
+*   `POST /gemini/chat`: The main endpoint. Sends a user message and returns the AI's response (handling any tool calls internally).
+*   `POST /gemini/chat/text`: Same as above, but returns a plain text response (useful for simple clients like microcontrollers).
+*   `POST /gemini/generate_content`: For single, stateless prompts without history.
+
+## Deployment
+
+The project includes a `Dockerfile` and `docker-compose.yml` for easy containerization.
+
+```bash
+docker-compose up --build
+```
+
+## Project Structure
+
+*   `main.py`: The API entry point.
+*   `src/llm/`: Contains the Gemini client, tool registry, and tool definitions.
+*   `src/services/`: Business logic (chat session management).
+*   `src/config/`: Configuration files.
