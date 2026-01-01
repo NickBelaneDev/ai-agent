@@ -28,7 +28,7 @@ if env_settings.PROJECT_ROOT is None:
 
 # If HOME_AGENT_CONFIG_PATH is not set, default to the file in this directory.
 if env_settings.HOME_AGENT_CONFIG_PATH is None:
-    env_settings.HOME_AGENT_CONFIG_PATH = Path(__file__).parent / "home_agent_config.toml"
+    env_settings.HOME_AGENT_CONFIG_PATH = Path(__file__).parent / "llm_config.toml"
 
 # Export for easier access
 PROJECT_ROOT = env_settings.PROJECT_ROOT

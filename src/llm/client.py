@@ -14,11 +14,11 @@ class HomeAgent:
     def __init__(self, client: genai.Client):
         self.model: str = LLM_CONFIG.model
         self.config: types.GenerateContentConfig = types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_budget=LLM_CONFIG.thinking_budget),
+            thinking_config=types.ThinkingConfig(thinking_budget=LLM_CONFIG.thinking_budget) if LLM_CONFIG.thinking_budget > 0 else None,
             temperature=LLM_CONFIG.temperature,
             max_output_tokens=LLM_CONFIG.max_output_tokens,
             system_instruction=LLM_CONFIG.system_instruction,
-            tools=[tool_registry.tool]
+            tools=[tool_registry.tool] if tool_registry.declarations else None
         )
         self.client: genai.Client = client
 

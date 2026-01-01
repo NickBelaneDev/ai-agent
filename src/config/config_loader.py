@@ -7,8 +7,8 @@ from src.config.logging_config import logger
 from src.config.settings import CONFIG_PATH
 
 class LLMConfigModel(BaseModel):
-    model: str = "gemini-flash-latest"
-    thinking_budget: int = Field(..., ge=0, le=1)
+    model: str = "gemini-2.0-flash"
+    thinking_budget: int = Field(..., ge=0)
     temperature: float = Field(..., ge=0, le=2)
     max_output_tokens: int = 100
     system_instruction: str = ("Someone forgot to add a system instruction... "
@@ -17,10 +17,17 @@ class LLMConfigModel(BaseModel):
 
 def load_config() -> LLMConfigModel:
     """Loads and returns a BaseModel of the config.toml."""
-    with open(CONFIG_PATH, "rb") as f:
-        raw = tomli.load(f)
-    logger.info(f"Configuration loaded from: {CONFIG_PATH}")
-    return LLMConfigModel(**raw["config"])
+    try:
+        with open(CONFIG_PATH, "rb") as f:
+            raw = tomli.load(f)
+        logger.info(f"Configuration loaded from: {CONFIG_PATH}")
+        return LLMConfigModel(**raw["config"])
+    except FileNotFoundError:
+        logger.error(f"Config file not found at {CONFIG_PATH}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load config: {e}")
+        raise
 
 
 if __name__ == "__main__":

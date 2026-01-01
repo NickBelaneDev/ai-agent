@@ -74,27 +74,3 @@ class SmartGeminiBackend:
         for player in to_delete:
             del self.sessions[player]
             logger.info(f"Cleaned up inactive session for {player}.")
-
-# A small test function for the chat service.
-async def main():
-    """Main async function to run the chat client for testing."""
-    logger.info("Starting SmartGeminiBackend test client...")
-    gemini = SmartGeminiBackend(env_settings.GEMINI_API_KEY)
-
-    while True:
-        user_prompt = input("\nYou> ")
-        if user_prompt.lower() in ["exit", "quit"]:
-            break
-        response_lines = await gemini.chat("User1", user_prompt)
-        
-        # Print each line of the response, simulating how Minecraft would show it.
-        # We keep print here as it is the UI for the test client
-        if isinstance(response_lines, list):
-             for line in response_lines:
-                print(f"LLM: {line}")
-        else:
-             print(f"LLM: {response_lines}")
-
-if __name__ == "__main__":
-    # To run an async function from the top level, you use asyncio.run()
-    asyncio.run(main())

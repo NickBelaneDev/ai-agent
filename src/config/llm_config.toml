@@ -1,5 +1,5 @@
 [config]
-model="gemini-flash-latest"
+model="gemini-2.0-flash"
 thinking_budget=0
 temperature=1.5
 max_output_tokens=250
