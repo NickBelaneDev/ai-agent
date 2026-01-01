@@ -1,10 +1,8 @@
 from google import genai
-from google.genai import types, Client
-from google.genai.chats import Chats
-from pydantic import BaseModel
+from google.genai import types
 
 # Import only the simple, static configurations from settings
-from src.config.settings import GEMINI_API_KEY
+from src.config.settings import env_settings
 # Import the config loader directly
 from src.config.config_loader import load_config
 from src.llm.registry import tool_registry
@@ -14,11 +12,11 @@ from src.config.logging_config import logger
 # Load the LLM configuration here, breaking the circular import.
 LLM_CONFIG = load_config()
 
-_gemini_api_key = GEMINI_API_KEY
-# The client gets the API key from the environment variable `GEMINI_API_KEY`.
-_client = genai.Client(api_key=_gemini_api_key)
+
+_client = genai.Client(api_key=env_settings.GEMINI_API_KEY)
 
 class HomeAgent:
+    """The HomeAgent is the basic model, that we have configured with our '"""
     def __init__(self, client: genai.Client):
         self.model: str = LLM_CONFIG.model
         self.config: types.GenerateContentConfig = LLM_CONFIG.generate_content_config
@@ -37,6 +35,8 @@ class HomeAgent:
             return False
 
     def ask(self, prompt: str):
+        """Generates content from a given prompt. Ment for simple one time requests,
+        where a chat history is not needed."""
         try:
             return self.client.models.generate_content(
                 model=self.model,

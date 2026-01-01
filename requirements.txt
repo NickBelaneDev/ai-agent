@@ -6,3 +6,5 @@ pytest~=9.0.1
 uvicorn~=0.38.0
 fastapi~=0.123.5
 google-genai
+gunicorn
+pydantic-settings

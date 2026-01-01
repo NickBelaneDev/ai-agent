@@ -1,14 +1,17 @@
+#
+
+
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from src.config.settings import GEMINI_API_KEY
+from src.config.settings import env_settings
 from src.services.chat_service import SmartGeminiBackend
 from src.config.logging_config import logger
 
 app = FastAPI()
 # Initialize the backend service as a global instance
-GEMINI = SmartGeminiBackend(GEMINI_API_KEY)
+GEMINI = SmartGeminiBackend(env_settings.GEMINI_API_KEY)
 
 class ChatRequest(BaseModel):
     """Defines the structure for a chat request body."""

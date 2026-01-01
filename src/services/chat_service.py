@@ -2,7 +2,7 @@ import asyncio
 import time
 from google import genai
 
-from src.config.settings import GEMINI_API_KEY, TIMEOUT_SECONDS
+from src.config.settings import env_settings, TIMEOUT_SECONDS
 from src.llm.client import HomeAgent, process_chat_turn
 from src.config.logging_config import logger
 
@@ -57,8 +57,10 @@ class SmartGeminiBackend:
         """
         chat_session = self._get_clean_session(player_name)
         logger.debug(f"chat: {player_name=}, \n{prompt=}")
+
         response = await process_chat_turn(chat_session, prompt)
         logger.debug(f"response: {response}")
+
         self.sessions[player_name]['last_active'] = time.time()
 
         # Split the response by newlines to create separate chat messages.
@@ -80,7 +82,7 @@ class SmartGeminiBackend:
 async def main():
     """Main async function to run the chat client for testing."""
     logger.info("Starting SmartGeminiBackend test client...")
-    gemini = SmartGeminiBackend(GEMINI_API_KEY)
+    gemini = SmartGeminiBackend(env_settings.GEMINI_API_KEY)
 
     while True:
         user_prompt = input("\nYou> ")
