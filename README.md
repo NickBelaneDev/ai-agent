@@ -1,103 +1,98 @@
-# AI Agents
+# AI Agents - Rapid Gemini API Wrapper
 
-## Description
+## Overview
 
-`ai-agents` is a project that integrates Google's Gemini API into a FastAPI backend, designed to act as an intelligent assistant. It supports chat sessions with context management and tool execution (function calling). The project is configured to run as a "board computer" style assistant, optimized for small displays (e.g., 128x64 pixels on an ESP32), but can be adapted for other interfaces like Minecraft or web apps.
+**AI Agents** is a lightweight, flexible boilerplate designed to help you rapidly deploy a custom API endpoint for Google's Gemini models. It serves as a playground and a solid foundation for building your own AI assistants.
 
-## Features
+The core philosophy is simplicity and extensibility: **You provide the tools and the context, and this project provides the infrastructure.**
 
-*   **FastAPI Backend:** A robust Python-based web server.
-*   **Gemini Integration:** Uses Google's Gemini API for intelligence.
-*   **Context Management:** Maintains chat history per user/session with automatic timeout cleanup.
-*   **Tool Support:** Extensible registry for defining and executing tools (function calls) that the AI can use.
-*   **Configurable:** Uses TOML configuration for LLM settings (model, temperature, system instructions).
-*   **Docker Ready:** Includes Dockerfile and docker-compose setup for easy deployment.
+Whether you want to build a smart home controller, a Minecraft bot, a personal coding assistant, or a "board computer" for an embedded display, this project lets you focus on *what* your agent can do, rather than *how* to connect it to the web.
 
-## Architecture
+## Key Features
 
-The system follows a clean architecture:
-*   `main.py`: Entry point for the FastAPI application.
-*   `src/services/chat_service.py`: Manages chat sessions and business logic.
-*   `src/llm/client.py`: Handles direct interaction with the Gemini API.
-*   `src/llm/registry.py`: Manages available tools for the LLM.
-*   `src/config/`: Configuration loading and settings.
+*   **Instant API:** Get a production-ready FastAPI server up and running in minutes.
+*   **Tool-First Design:** Easily "feed" your agent with custom Python functions (tools). The system handles the complex function calling loop automatically.
+*   **Context Aware:** Built-in session management keeps track of conversations per user, so your agent remembers what was just said.
+*   **Configurable Persona:** Define your agent's personality, constraints, and system instructions via a simple TOML file.
+*   **Dockerized:** Deploy anywhere with the included Docker setup.
 
-## Setup and Installation
+## How It Works
+
+1.  **Define a Tool:** Write a standard Python function (e.g., `turn_on_lights()`, `query_database()`).
+2.  **Register It:** Add your function to the `ToolRegistry`.
+3.  **Chat:** Send a prompt to the API. Gemini decides if it needs to use your tool, the backend executes it, and the result is fed back to the AI for the final response.
+
+## Getting Started
 
 ### Prerequisites
 
 *   Python 3.12+
 *   A Google Gemini API Key
 
-### Local Development
+### Quick Start
 
-1.  **Clone the repository:**
+1.  **Clone & Install:**
     ```bash
     git clone <repository-url>
     cd ai-agents
-    ```
-
-2.  **Create a virtual environment:**
-    ```bash
-    python -m venv .venv
-    # Windows
-    .venv\Scripts\activate
-    # Linux/Mac
-    source .venv/bin/activate
-    ```
-
-3.  **Install dependencies:**
-    ```bash
     pip install -r requirements.txt
     ```
 
-4.  **Environment Configuration:**
-    *   Create a `.env` file in the root directory (copy from `empty.env` or `service.template` if available, though `empty.env` seems to be a placeholder).
-    *   Add your Gemini API key:
-        ```env
-        GEMINI_API_KEY="your_actual_api_key_here"
-        ```
+2.  **Configure:**
+    Create a `.env` file and add your API key:
+    ```env
+    GEMINI_API_KEY="your_api_key_here"
+    ```
 
-5.  **Run the server:**
-    For production-like local testing, we use `gunicorn` with `uvicorn` workers:
+3.  **Run:**
     ```bash
+    # For development
+    uvicorn main:app --reload
+    
+    # For production
     gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
     ```
-    Alternatively, for simple development reloading:
-    ```bash
-    uvicorn main:app --reload
-    ```
-    The API will be available at `http://127.0.0.1:8000`.
 
-### Docker
+4.  **Interact:**
+    Open your browser to `http://127.0.0.1:8000/docs` to test the endpoints.
 
-1.  **Build and Run:**
-    ```bash
-    docker-compose up --build
-    ```
+## Customization
 
-## Usage
+### 1. Giving your Agent a Personality
+Edit `src/config/home_agent_config.toml` to change the system instructions.
+```toml
+[config]
+system_instruction="You are a sarcastic robot assistant."
+model="gemini-1.5-flash"
+```
 
-### API Endpoints
+### 2. Adding Capabilities (Tools)
+This is where the magic happens. To give your agent new powers:
 
-*   `GET /`: Health check/Welcome message.
-*   `POST /gemini/generate_content`: Simple one-off prompt generation.
-    *   Query Param: `prompt`
-*   `POST /gemini/chat`: Chat with context, returns JSON response.
-    *   Query Params: `user_name`, `prompt`
-*   `POST /gemini/chat/text`: Chat with context, returns plain text response.
-    *   Query Params: `user_name`, `prompt`
+1.  **Create a Tool File:** Add a new file in `src/llm/tools/` (e.g., `my_tools.py`).
+2.  **Define the Function:** Write your Python logic.
+3.  **Define the Schema:** Create a `types.FunctionDeclaration` so Gemini knows how to use it.
+4.  **Register:** Import your tool in `src/llm/registry.py` and add it to the list.
 
-### Configuration
+*See `src/llm/tools/example_tool.py` for a complete reference.*
 
-You can modify the behavior of the AI agent by editing `src/config/home_agent_config.toml`.
-*   `system_instruction`: Change the persona and rules for the AI.
-*   `model`: Switch Gemini models (e.g., `gemini-1.5-flash`).
-*   `temperature`: Adjust creativity.
+## API Endpoints
 
-## Tools
+*   `POST /gemini/chat`: The main endpoint. Sends a user message and returns the AI's response (handling any tool calls internally).
+*   `POST /gemini/chat/text`: Same as above, but returns a plain text response (useful for simple clients like microcontrollers).
+*   `POST /gemini/generate_content`: For single, stateless prompts without history.
 
-To add new tools:
-1.  Define the tool function in `src/llm/tools/`.
-2.  Register it in `src/llm/registry.py`.
-The LLM will automatically be aware of the new tool and can call it during conversations.
+## Deployment
+
+The project includes a `Dockerfile` and `docker-compose.yml` for easy containerization.
+
+```bash
+docker-compose up --build
+```
+
+## Project Structure
+
+*   `main.py`: The API entry point.
+*   `src/llm/`: Contains the Gemini client, tool registry, and tool definitions.
+*   `src/services/`: Business logic (chat session management).
+*   `src/config/`: Configuration files.
