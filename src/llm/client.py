@@ -21,7 +21,13 @@ class HomeAgent:
     """The HomeAgent is the basic model, that we have configured with our '"""
     def __init__(self, client: genai.Client):
         self.model: str = LLM_CONFIG.model
-        self.config: types.GenerateContentConfig = LLM_CONFIG.generate_content_config
+        self.config: types.GenerateContentConfig = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=LLM_CONFIG.thinking_budget),
+            temperature=LLM_CONFIG.temperature,
+            max_output_tokens=LLM_CONFIG.max_output_tokens,
+            system_instruction=LLM_CONFIG.system_instruction,
+            tools=[tool_registry.tool]
+        )
         self.client: genai.Client = client
 
     def get_chat(self):

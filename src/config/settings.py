@@ -1,15 +1,16 @@
 # Load all the necessary Global Variables
-
-
-import os
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 
-from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class EnvSettings(BaseSettings):
     GEMINI_API_KEY: str
+    
+    # Optional: Allow overriding paths via environment variables
+    PROJECT_ROOT: Path | None = None
+    HOME_AGENT_CONFIG_PATH: Path | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8"
@@ -19,9 +20,19 @@ class EnvSettings(BaseSettings):
 load_dotenv(find_dotenv())
 env_settings = EnvSettings()
 
-CONFIG_DIR = Path(__file__).parent
-SRC_DIR = CONFIG_DIR.parent
-PROJECT_ROOT = SRC_DIR.parent
+# --- Default Path Logic ---
+# If PROJECT_ROOT is not set via env var, calculate it relative to this file.
+if env_settings.PROJECT_ROOT is None:
+    # settings.py is in src/config/, so root is ../../
+    env_settings.PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+# If HOME_AGENT_CONFIG_PATH is not set, default to the file in this directory.
+if env_settings.HOME_AGENT_CONFIG_PATH is None:
+    env_settings.HOME_AGENT_CONFIG_PATH = Path(__file__).parent / "home_agent_config.toml"
+
+# Export for easier access
+PROJECT_ROOT = env_settings.PROJECT_ROOT
+CONFIG_PATH = env_settings.HOME_AGENT_CONFIG_PATH
 
 # --- Chats ---
 TIMEOUT_SECONDS = 300

@@ -2,7 +2,8 @@ import logging
 import sys
 from pathlib import Path
 
-def setup_logging(name: str = "ai_agents", log_level: int = logging.INFO) -> logging.Logger:
+def setup_logging(name: str = "ai_agents",
+                  log_level: int = logging.INFO) -> logging.Logger:
     """
     Sets up and returns a logger with the specified name and level.
     """

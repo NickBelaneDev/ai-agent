@@ -19,49 +19,49 @@ class SmartGeminiBackend:
         # We store sessions here: {'player_name': {'chat': chat_object, 'last_active': timestamp}}
         self.sessions = {}
 
-    def _get_clean_session(self, player_name: str):
+    def _get_clean_session(self, user_name: str):
         current_time = time.time()
 
-        if player_name in self.sessions:
-            last_active = self.sessions[player_name]['last_active']
+        if user_name in self.sessions:
+            last_active = self.sessions[user_name]['last_active']
 
             if (current_time - last_active) > TIMEOUT_SECONDS:
-                logger.info(f"Session for {player_name} has expired. Starting a new context.")
-                del self.sessions[player_name]
+                logger.info(f"Session for {user_name} has expired. Starting a new context.")
+                del self.sessions[user_name]
             else:
-                return self.sessions[player_name]['chat']
+                return self.sessions[user_name]['chat']
 
 
-        if player_name not in self.sessions:
-            logger.info(f"Creating a new chat for {player_name}...")
+        if user_name not in self.sessions:
+            logger.info(f"Creating a new chat for {user_name}...")
             new_chat = self.agent.get_chat()
 
-            self.sessions[player_name] = {
+            self.sessions[user_name] = {
                 'chat': new_chat,
                 'last_active': current_time
             }
-            logger.info(f"New chat for {player_name} created!")
+            logger.info(f"New chat for {user_name} created!")
 
-        return self.sessions[player_name]['chat']
+        return self.sessions[user_name]['chat']
 
     async def generate_content(self, prompt: str) -> str:
         logger.debug(f"generate_content: {prompt}")
         return self.agent.ask(prompt)
 
-    async def chat(self, player_name: str, prompt: str) -> str:
+    async def chat(self, user_name: str, prompt: str) -> str:
         """
         Handles a single chat turn for a given player.
 
         The response is split into multiple strings, one for each line,
         to make it suitable for display in Minecraft chat.
         """
-        chat_session = self._get_clean_session(player_name)
-        logger.debug(f"chat: {player_name=}, \n{prompt=}")
+        chat_session = self._get_clean_session(user_name)
+        logger.debug(f"chat: {user_name=}, \n{prompt=}")
 
         response = await process_chat_turn(chat_session, prompt)
         logger.debug(f"response: {response}")
 
-        self.sessions[player_name]['last_active'] = time.time()
+        self.sessions[user_name]['last_active'] = time.time()
 
         # Split the response by newlines to create separate chat messages.
         return response
@@ -88,7 +88,7 @@ async def main():
         user_prompt = input("\nYou> ")
         if user_prompt.lower() in ["exit", "quit"]:
             break
-        response_lines = await gemini.chat("Player1", user_prompt)
+        response_lines = await gemini.chat("User1", user_prompt)
         
         # Print each line of the response, simulating how Minecraft would show it.
         # We keep print here as it is the UI for the test client
