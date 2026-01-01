@@ -9,3 +9,4 @@ google-genai
 gunicorn
 pydantic-settings
 sqlalchemy
+aiosqlite
