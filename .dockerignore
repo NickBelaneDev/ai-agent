@@ -5,6 +5,7 @@ __pycache__
 .idea
 *.pyc
 /notes/
+/tests/
 db_debugging.py
 inspect_chat_object.py
 inspect_history_items.py
