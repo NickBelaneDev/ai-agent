@@ -1,9 +1,6 @@
 from google import genai
 from google.genai import types
 
-# Import only the simple, static configurations from settings
-from src.config.settings import env_settings
-# Import the config loader directly
 from src.config.config_loader import load_config
 from src.llm.registry import tool_registry
 from src.config.logging_config import logger
@@ -11,11 +8,6 @@ from src.config.logging_config import logger
 # --- Global Instances ---
 # Load the LLM configuration here, breaking the circular import.
 LLM_CONFIG = load_config()
-
-
-
-
-_client = genai.Client(api_key=env_settings.GEMINI_API_KEY)
 
 class HomeAgent:
     """The HomeAgent is the basic model, that we have configured with our '"""
@@ -97,7 +89,7 @@ async def process_chat_turn(chat: types.UserContent, user_prompt: str) -> str:
                 )
 
             except Exception as e:
-                logger.error(f"Error during function call '{function_name}': {e}")
+                logger.exception(f"Error during function call '{function_name}': {e}")
                 # Return the error to the user to avoid getting stuck
                 return f"Error executing tool {function_name}: {e}"
 

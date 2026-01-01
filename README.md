@@ -6,7 +6,7 @@
 
 The core philosophy is simplicity and extensibility: **You provide the tools and the context, and this project provides the infrastructure.**
 
-Whether you want to build a smart home controller, a Minecraft bot, a personal coding assistant, or a "board computer" for an embedded display, this project lets you focus on *what* your agent can do, rather than *how* to connect it to the web.
+Whether you want to build a smart home controller, a personal coding assistant, or a "board computer" for an embedded display, this project lets you focus on *what* your agent can do, rather than *how* to connect it to the web.
 
 ## Key Features
 
@@ -14,7 +14,7 @@ Whether you want to build a smart home controller, a Minecraft bot, a personal c
 *   **Tool-First Design:** Easily "feed" your agent with custom Python functions (tools). The system handles the complex function calling loop automatically.
 *   **Context Aware:** Built-in session management keeps track of conversations per user, so your agent remembers what was just said.
 *   **Configurable Persona:** Define your agent's personality, constraints, and system instructions via a simple TOML file.
-*   **Dockerized:** Deploy anywhere with the included Docker setup.
+*   **Docker Ready:** Includes Dockerfile and docker-compose setup for easy deployment.
 
 ## How It Works
 
@@ -33,8 +33,9 @@ Whether you want to build a smart home controller, a Minecraft bot, a personal c
 
 1.  **Clone & Install:**
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/NickBelaneDev/ai-agent
     cd ai-agents
+    python3 -m venv .venv # create a venv if you not already have one.
     pip install -r requirements.txt
     ```
 

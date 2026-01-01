@@ -8,7 +8,7 @@ from src.config.logging_config import logger
 
 class SmartGeminiBackend:
     """
-    A backend service to host and manage Minecraft chat sessions.
+    A backend service to host and manage a collection of chat sessions.
     It monitors chats, decides when to start a new one, and when to forget an old one.
     Chat sessions are stored in an in-memory dictionary.
     """
@@ -17,6 +17,7 @@ class SmartGeminiBackend:
         self.agent = HomeAgent(self.client)
 
         # We store sessions here: {'player_name': {'chat': chat_object, 'last_active': timestamp}}
+        # NOTE: This will be replaced by a Posgres db in the future.
         self.sessions = {}
 
     def _get_clean_session(self, user_name: str):
@@ -50,10 +51,7 @@ class SmartGeminiBackend:
 
     async def chat(self, user_name: str, prompt: str) -> str:
         """
-        Handles a single chat turn for a given player.
-
-        The response is split into multiple strings, one for each line,
-        to make it suitable for display in Minecraft chat.
+        Handles a single chat turn for a given user.
         """
         chat_session = self._get_clean_session(user_name)
         logger.debug(f"chat: {user_name=}, \n{prompt=}")
@@ -63,7 +61,6 @@ class SmartGeminiBackend:
 
         self.sessions[user_name]['last_active'] = time.time()
 
-        # Split the response by newlines to create separate chat messages.
         return response
 
     def cleanup_memory(self):

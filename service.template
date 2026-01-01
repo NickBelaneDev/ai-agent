@@ -1,14 +1,20 @@
 [Unit]
-Description=MC-Gemini FastAPI Service
+Description=AI Agents FastAPI Service
 After=network.target
 
 [Service]
-User=mc-gemini-user
-Group=mc-gemini-user
+# Replace with your actual user and group
+User=appuser
+Group=appuser
 
-WorkingDirectory=/opt/srv/mc-gemini/main/mc-gemini
+# Replace with the absolute path to your project root
+WorkingDirectory=/opt/ai-agents
 
-ExecStart=/opt/srv/mc-gemini/main/mc-gemini/.venv/bin/gunicorn main:app --bind 0.0.0.0:8000 --workers 4 --worker-class uvicorn.workers.UvicornWorker
+# Adjust the path to the gunicorn executable inside your virtual environment
+ExecStart=/opt/ai-agents/.venv/bin/gunicorn main:app --bind 0.0.0.0:8000 --workers 4 --worker-class uvicorn.workers.UvicornWorker --timeout 120
+
+# Load environment variables from .env file
+EnvironmentFile=/opt/ai-agents/.env
 
 Restart=always
 RestartSec=5
