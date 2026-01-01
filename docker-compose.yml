@@ -8,4 +8,4 @@ services:
       - .env
     restart: always
     volumes:
-      - /opt/docker/gemini-api:/app
+      - /opt/docker/ai-agent:/app

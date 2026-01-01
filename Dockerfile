@@ -1,9 +1,9 @@
 FROM python:3.12-slim
 
 # Prevent Python from writing pyc files to disc
-ENV PYTHONDONTWRITEBYTECODE=1
+#ENV PYTHONDONTWRITEBYTECODE=1
 # Prevent Python from buffering stdout and stderr
-ENV PYTHONUNBUFFERED=1
+#ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
