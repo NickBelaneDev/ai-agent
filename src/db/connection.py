@@ -13,8 +13,6 @@ engine = create_async_engine(
     connect_args=connect_args
 )
 
-# 2. Session Factory (Die Fabrik für Verbindungen)
-# Das nutzen wir später im Code, um kurzzeitig eine Verbindung zu öffnen
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 async def init_db():
