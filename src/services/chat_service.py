@@ -2,15 +2,21 @@ import asyncio
 import time
 import json
 from sqlalchemy import select
+from google import genai
+
 
 from src.db.connection import AsyncSessionLocal
 from src.db.models import ChatSession
 
-from google import genai
+from src.core.agent import GenericAgent
+from src.core.tools import AgentToolRegistry
 
+from src.config.config_loader import load_config
 from src.config.settings import env_settings, TIMEOUT_SECONDS
-from src.llm.client import HomeAgent, process_chat_turn
 from src.config.logging_config import logger
+
+from src.tools.example_tool import request_weather, request_weather_declaration
+
 
 class SmartGeminiBackend:
     """
@@ -19,12 +25,23 @@ class SmartGeminiBackend:
     Chat sessions are persisted in the database.
     """
     def __init__(self, api_key: str):
+        conf = load_config()
         self._raw_client = genai.Client(api_key=api_key)
-        self.agent = HomeAgent(self._raw_client)
+        registry = AgentToolRegistry()
+        registry.register(request_weather, request_weather_declaration)
+
+        self.agent = GenericAgent(
+            client=self._raw_client,
+            model_name=conf.model,
+            sys_instruction=conf.system_instruction,
+            temp=conf.temperature,
+            max_tokens=conf.max_output_tokens,
+            registry=registry
+        )
 
     async def generate_content(self, prompt: str) -> str:
         logger.debug(f"generate_content: {prompt}")
-        return self.agent.ask(prompt)
+        return await self.agent.ask(prompt)
 
     async def chat(self, user_name: str, prompt: str) -> str:
         """
@@ -62,11 +79,11 @@ class SmartGeminiBackend:
             
             # Process the turn (sends message to LLM)
             try:
-                response_text = await process_chat_turn(chat_object, prompt)
+                response_text = await self.agent.process_chat_turn(chat_object, prompt)
             except Exception as e:
                 logger.error(f"LLM Call failed for {user_name}: {e}")
                 # Return a friendly error message instead of crashing
-                return "Entschuldigung, ich habe gerade Verbindungsprobleme und kann meine Gedanken nicht ordnen. (Network Error)"
+                return "I'm sorry! It seems that something is wrong with my network, at least I am not working right now..."
             
             # Retrieve history using the correct method
             history_list = []
@@ -137,7 +154,7 @@ class SmartGeminiBackend:
                         "parts": parts_data
                     })
                 except Exception as e:
-                    logger.warning(f"Konnte History-Item nicht serialisieren: {type(item)} - {e}")
+                    logger.warning(f"Could not serialize history item: {type(item)} - {e}")
 
         return serialized
 
