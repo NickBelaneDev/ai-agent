@@ -2,3 +2,6 @@
 /todo.md
 /notes/
 /chat_database.db
+/db_debugging.py
+/inspect_chat_object.py
+/inspect_history_items.py
