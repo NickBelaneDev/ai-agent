@@ -54,7 +54,6 @@ class SmartGeminiBackend:
                         history = []
 
             # Create chat object with loaded history
-            # Note: The SDK usually accepts a list of dicts for history if structure matches.
             chat_object = self.agent.client.chats.create(
                 model=self.agent.model,
                 config=self.agent.config,
@@ -62,22 +61,26 @@ class SmartGeminiBackend:
             )
             
             # Process the turn (sends message to LLM)
-            response_text = await process_chat_turn(chat_object, prompt)
+            try:
+                response_text = await process_chat_turn(chat_object, prompt)
+            except Exception as e:
+                logger.error(f"LLM Call failed for {user_name}: {e}")
+                # Return a friendly error message instead of crashing
+                return "Entschuldigung, ich habe gerade Verbindungsprobleme und kann meine Gedanken nicht ordnen. (Network Error)"
             
-            # Retrieve history using the correct method (get_history instead of .history attribute)
+            # Retrieve history using the correct method
             history_list = []
             if hasattr(chat_object, "get_history"):
                 history_list = chat_object.get_history()
+            elif hasattr(chat_object, "history"):
+                history_list = chat_object.history
             else:
-                # Fallback just in case, though inspection showed get_history exists
-                logger.warning("chat_object.get_history() not found. Trying to find alternative...")
-                if hasattr(chat_object, "history"):
-                    history_list = chat_object.history
+                logger.warning("Could not find history on chat object.")
 
             new_history_data = self._serialize_history(history_list)
             
-            if not new_history_data:
-                logger.warning("Serialized history is empty! DB will be empty.")
+            if not new_history_data and history_list:
+                logger.warning("Serialized history is empty despite history_list not being empty!")
 
             if not db_session:
                 db_session = ChatSession(user_name=user_name)
@@ -97,10 +100,10 @@ class SmartGeminiBackend:
         """
         if not history_list:
             return []
-
+            
         serialized = []
         for item in history_list:
-            # Prüfen, ob das Objekt eine 'model_dump' Methode hat (Pydantic v2)
+            # 1. Try standard Pydantic/Dict methods
             if hasattr(item, "model_dump"):
                 serialized.append(item.model_dump(mode="json"))
             elif hasattr(item, "to_dict"):
@@ -108,9 +111,34 @@ class SmartGeminiBackend:
             elif isinstance(item, dict):
                 serialized.append(item)
             else:
-                # Fallback: Wenn wir nicht sicher sind, was es ist, ignorieren wir es lieber
-                # um Crashs zu vermeiden, oder loggen eine Warnung.
-                logger.warning(f"Konnte History-Item nicht serialisieren: {type(item)}")
+                # 2. Manual Fallback for Google GenAI Objects
+                try:
+                    # Extract role
+                    role = getattr(item, "role", "unknown")
+                    
+                    # Extract parts
+                    parts_data = []
+                    raw_parts = getattr(item, "parts", [])
+                    
+                    # parts might be a list of Part objects or strings
+                    if isinstance(raw_parts, list):
+                        for part in raw_parts:
+                            if hasattr(part, "text"):
+                                parts_data.append({"text": part.text})
+                            elif isinstance(part, str):
+                                parts_data.append({"text": part})
+                            elif isinstance(part, dict):
+                                parts_data.append(part)
+                            else:
+                                parts_data.append({"text": str(part)})
+                    
+                    serialized.append({
+                        "role": role,
+                        "parts": parts_data
+                    })
+                except Exception as e:
+                    logger.warning(f"Konnte History-Item nicht serialisieren: {type(item)} - {e}")
+
         return serialized
 
 
