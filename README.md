@@ -7,6 +7,7 @@ A FastAPI-based service that provides an interface to Google's Gemini AI, design
 *   **Smart Session Management**: Automatically handles user sessions with configurable timeouts.
 *   **Gemini Integration**: Utilizes Google's GenAI SDK for advanced LLM capabilities.
 *   **Function Calling**: Supports dynamic tool execution via the LLM (configured via `tool_registry`).
+*   **Decentralized Agent Architecture**: The agent logic is decoupled and can be instantiated dynamically.
 *   **Docker Ready**: Includes Dockerfile and docker-compose setup for easy deployment.
 *   **Async Architecture**: Built on FastAPI and Uvicorn for high-performance asynchronous processing.
 
@@ -72,8 +73,8 @@ The API will be available at `http://localhost:8000`.
 ## Configuration
 
 *   **`src/config/settings.py`**: Manages environment variables and global settings.
-*   **`src/config/home_agent_config.toml`**: (Default) Configuration for the LLM model parameters (temperature, tokens, etc.).
-*   **`src/llm/registry.py`**: Handles the registration of tools available to the LLM.
+*   **`src/config/llm_config.toml`**: (Default) Configuration for the LLM model parameters (temperature, tokens, etc.).
+*   **`src/core/tools.py`**: Handles the registration of tools available to the LLM.
 
 ## Project Structure
 
@@ -85,6 +86,7 @@ ai-agents/
 ├── requirements.txt        # Python dependencies
 └── src/
     ├── config/             # Configuration logic
-    ├── llm/                # LLM client and tool registry
+    ├── core/               # Core agent logic and tools
+    ├── db/                 # Database models and connection
     └── services/           # Business logic (Chat Service)
 ```
