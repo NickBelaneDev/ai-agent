@@ -29,10 +29,12 @@ A FastAPI-based service that provides an interface to Google's Gemini AI, design
     Create a `.env` file in the root directory (you can use `empty.env` as a template):
     ```properties
     GEMINI_API_KEY=your_api_key_here
+    APP_API_TOKEN=your_secret_api_token_here
     # Optional overrides
     # PROJECT_ROOT=/path/to/project
     # HOME_AGENT_CONFIG_PATH=/path/to/config.toml
     ```
+    **Important**: The `APP_API_TOKEN` is crucial for securing your service. Choose a strong, unique token.
 
 3.  **Install dependencies:**
     ```bash
@@ -59,6 +61,22 @@ The API will be available at `http://localhost:8000`.
     ```
 
 2.  The service will be accessible at `http://localhost:8083` (as configured in `docker-compose.yml`).
+
+## Authentication
+
+All API endpoints under `/gemini/` require authentication using an `APP_API_TOKEN`. You must include an `X-Auth-Token` header with your requests, containing the value of your `APP_API_TOKEN` defined in your `.env` file.
+
+**Example using `curl`:**
+
+```bash
+curl -X POST "http://localhost:8000/gemini/chat" \
+     -H "X-Auth-Token: your_secret_api_token_here" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "user_name": "test_user",
+           "prompt": "Hello, Gemini!"
+         }'
+```
 
 ## API Endpoints
 
