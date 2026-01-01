@@ -4,7 +4,6 @@ import json
 from sqlalchemy import select
 from google import genai
 
-
 from src.db.connection import AsyncSessionLocal
 from src.db.models import ChatSession
 
