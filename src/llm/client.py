@@ -13,6 +13,8 @@ from src.config.logging_config import logger
 LLM_CONFIG = load_config()
 
 
+
+
 _client = genai.Client(api_key=env_settings.GEMINI_API_KEY)
 
 class HomeAgent:
