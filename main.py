@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, Header, HTTPException, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
@@ -7,6 +7,17 @@ from src.config.settings import env_settings
 from src.services.chat_service import SmartGeminiBackend
 from src.config.logging_config import logger
 from src.db.connection import init_db
+
+
+async def verify_api_token(x_auth_token: str = Header(alias="X-Auth-Token")):
+    """
+    Checks, if the x_auth_token is matching the APP_API_TOKEN.
+    """
+    if x_auth_token != env_settings.APP_API_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Zugriff verweigert: Ungültiger Token."
+        )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,14 +57,14 @@ class ChatRequest(BaseModel):
 async def root():
     return {"message": "Welcome to the Smart Gemini API. See /docs for endpoints."}
 
-@app.post("/gemini/generate_content")
+@app.post("/gemini/generate_content", dependencies=[Depends(verify_api_token)])
 async def generate_content(prompt: str,
                            gemini: SmartGeminiBackend = Depends(get_gemini_backend)):
     logger.info(f">> Incoming generate content request: {prompt}")
     response = await gemini.generate_content(prompt)
     return {"response": response}
 
-@app.post("/gemini/chat")
+@app.post("/gemini/chat", dependencies=[Depends(verify_api_token)])
 async def chat_json(request: ChatRequest,
                     gemini: SmartGeminiBackend = Depends(get_gemini_backend)):
     """
@@ -64,7 +75,7 @@ async def chat_json(request: ChatRequest,
     response = await gemini.chat(request.user_name, request.prompt)
     return {"response": response}
 
-@app.post("/gemini/chat/text")
+@app.post("/gemini/chat/text", dependencies=[Depends(verify_api_token)])
 async def chat_text(request: ChatRequest,
                     gemini: SmartGeminiBackend = Depends(get_gemini_backend)):
     """

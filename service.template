@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 # Replace with your actual user and group
-User=appuser
-Group=appuser
+User=ai-agent-user
+Group=ai-agent-user
 
 # Replace with the absolute path to your project root
 WorkingDirectory=/opt/ai-agents
