@@ -2,7 +2,7 @@ from pathlib import Path
 from llm_impl import GenericGemini, GeminiToolRegistry
 from ...config.settings import env_settings
 from ...config.config_loader import load_config, LLMConfigModel
-from .tools import tool_registry
+from .tool_registry import tool_registry
 from google import genai
 
 

@@ -11,7 +11,6 @@ from llm_impl import GenericGemini
 from ..config.settings import TIMEOUT_SECONDS
 from ..config.logging_config import logger
 
-
 class SmartGeminiBackend:
     """
     A backend service to host and manage a collection of chat sessions.
@@ -20,19 +19,6 @@ class SmartGeminiBackend:
     """
     def __init__(self, agent: GenericGemini):
         self.agent = agent
-
-    @staticmethod
-    def _manage_history(chat_object):
-        if hasattr(chat_object, "get_history"):
-            return chat_object.get_history()
-
-        elif hasattr(chat_object, "history"):
-            return chat_object.history
-
-        else:
-            logger.warning("Could not find history on chat object.")
-            return []
-
 
     async def generate_content(self, prompt: str) -> str:
         logger.debug(f"generate_content: {prompt}")
@@ -82,7 +68,6 @@ class SmartGeminiBackend:
 
             # Write the serialized_history to the database
             new_history_data = self._serialize_history(_chat_history)
-
             if not new_history_data and _chat_history:
                 logger.warning("Serialized history is empty despite chat_history not being empty!")
 
@@ -91,12 +76,25 @@ class SmartGeminiBackend:
                 db_session = ChatSession(user_name=user_name)
                 db.add(db_session)
 
+            # Update the chat history
             db_session.history_json = json.dumps(new_history_data)
             db_session.last_active = current_time
 
             await db.commit()
 
         return response_text
+
+    @staticmethod
+    def _manage_history(chat_object):
+        if hasattr(chat_object, "get_history"):
+            return chat_object.get_history()
+
+        elif hasattr(chat_object, "history"):
+            return chat_object.history
+
+        else:
+            logger.warning("Could not find history on chat object.")
+            return []
 
     @staticmethod
     def _serialize_history(history_list) -> list[dict]:
