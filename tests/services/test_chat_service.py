@@ -40,37 +40,12 @@ def mock_db_session():
 
 @pytest.fixture
 def backend(mock_genai_client, mock_agent):
-    with patch("src.services.chat_service.load_config") as mock_load_config, \
-         patch("src.services.chat_service.GenericGemini", return_value=mock_agent), \
-         patch("src.services.chat_service.genai.Client", return_value=mock_genai_client), \
-         patch("src.services.chat_service.GeminiToolRegistry") as mock_registry_cls:
-        
-        mock_config = MagicMock()
-        mock_config.model = "test-model"
-        mock_config.system_instruction = "sys"
-        mock_config.temperature = 0.5
-        mock_config.max_output_tokens = 100
-        mock_load_config.return_value = mock_config
-        
-        # Mock the registry instance
-        mock_registry_instance = MagicMock()
-        mock_registry_cls.return_value = mock_registry_instance
-        
-        backend = SmartGeminiBackend("fake_key")
-        
-        # Attach mocks to backend for verification in tests if needed
-        backend.mock_registry = mock_registry_instance
-        
-        return backend
+    # Since SmartGeminiBackend now takes an agent instance directly,
+    # we can just pass the mock_agent.
+    backend = SmartGeminiBackend(mock_agent)
+    return backend
 
 # --- Tests ---
-
-def test_init_registers_tools(backend):
-    """Test that the backend initializes and registers tools."""
-    # Verify that register was called on the registry
-    # We need to import the tool to check if it was passed
-    from src.tools.example_tool import request_weather_tool
-    backend.mock_registry.register.assert_called_with(request_weather_tool)
 
 @pytest.mark.asyncio
 async def test_generate_content(backend):

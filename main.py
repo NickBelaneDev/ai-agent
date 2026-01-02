@@ -7,6 +7,7 @@ from src.config.settings import env_settings
 from src.services.chat_service import SmartGeminiBackend
 from src.config.logging_config import logger
 from src.db.connection import init_db
+from src.llms.gemini_default.gemini import DefaultGeminiLLM
 
 
 async def verify_api_token(x_auth_token: str = Header(alias="X-Auth-Token")):
@@ -30,7 +31,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized.")
 
-    gemini_backend = SmartGeminiBackend(env_settings.GEMINI_API_KEY)
+    gemini_backend = SmartGeminiBackend(DefaultGeminiLLM)
     app.state.gemini_backend = gemini_backend
     logger.info("SmartGeminiBackend initialized and attached to app state.")
     

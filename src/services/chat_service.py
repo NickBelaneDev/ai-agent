@@ -2,18 +2,14 @@ import asyncio
 import time
 import json
 from sqlalchemy import select
-from google import genai
 
-from src.db.connection import AsyncSessionLocal, init_db
-from src.db.models import ChatSession
+from ..db.connection import AsyncSessionLocal, init_db
+from ..db.models import ChatSession
 
-from llm_impl import GeminiToolRegistry, GenericGemini
+from llm_impl import GenericGemini
 
-from src.config.config_loader import load_config
-from src.config.settings import env_settings, TIMEOUT_SECONDS
-from src.config.logging_config import logger
-
-from src.tools.example_tool import request_weather_tool
+from ..config.settings import TIMEOUT_SECONDS
+from ..config.logging_config import logger
 
 
 class SmartGeminiBackend:
@@ -22,26 +18,8 @@ class SmartGeminiBackend:
     It monitors chats, decides when to start a new one, and when to forget an old one.
     Chat sessions are persisted in the database.
     """
-    def __init__(self, api_key: str):
-        conf = load_config()
-        self._raw_client = genai.Client(api_key=api_key)
-        registry = self._create_registry()
-        self.agent = GenericGemini(
-            client=self._raw_client,
-            model_name=conf.model,
-            sys_instruction=conf.system_instruction,
-            temp=conf.temperature,
-            max_tokens=conf.max_output_tokens,
-            registry=registry
-        )
-
-    @staticmethod
-    def _create_registry():
-        """Create the tool registry. For now add your tools here, but we will make this more scalable later on."""
-        registry = GeminiToolRegistry()
-        registry.register(request_weather_tool)
-        logger.info("Created tool registry.")
-        return registry
+    def __init__(self, agent: GenericGemini):
+        self.agent = agent
 
     @staticmethod
     def _manage_history(chat_object):
@@ -104,10 +82,11 @@ class SmartGeminiBackend:
 
             # Write the serialized_history to the database
             new_history_data = self._serialize_history(_chat_history)
-            
+
             if not new_history_data and _chat_history:
                 logger.warning("Serialized history is empty despite chat_history not being empty!")
 
+            # Instantiate a new ChatSession, if it does not exist yet
             if not db_session:
                 db_session = ChatSession(user_name=user_name)
                 db.add(db_session)
@@ -173,7 +152,14 @@ async def main():
     """Main async function to run the chat client for testing."""
     logger.info("Starting SmartGeminiBackend test client...")
     await init_db()
-    gemini = SmartGeminiBackend(env_settings.GEMINI_API_KEY)
+    
+    # Import locally to avoid circular imports or path issues during normal execution if not needed
+    try:
+        from src.llms.gemini_default.gemini import DefaultGeminiLLM
+        gemini = SmartGeminiBackend(DefaultGeminiLLM)
+    except ImportError:
+        logger.warning("Could not import DefaultGeminiLLM. Test client might fail.")
+        return
 
     while True:
         user_prompt = input("\nYou> ")

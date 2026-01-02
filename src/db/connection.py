@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from src.config.settings import env_settings
+from ..config.settings import env_settings
 
 # 1. Erstelle die Engine (Der Motor)
 # "check_same_thread": False ist speziell für SQLite wichtig
