@@ -7,6 +7,7 @@ class EnvSettings(BaseSettings):
     GEMINI_API_KEY: str
     DATABASE_URL: str
     APP_API_TOKEN: str
+    REDIS_URL: str | None = None
     
     # Optional: Allow overriding paths via environment variables
     PROJECT_ROOT: Path | None = None

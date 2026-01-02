@@ -9,3 +9,12 @@ services:
     restart: always
     volumes:
       - /opt/docker/ai-agent:/app
+    environment:
+      - REDIS_URL=redis://redis:6379/0  # Damit dein Agent weiß, wo Redis ist
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    container_name: ai-agent-redis
+    restart: always
