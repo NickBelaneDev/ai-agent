@@ -92,19 +92,4 @@ curl -X POST "http://localhost:8000/gemini/chat" \
 
 *   **`src/config/settings.py`**: Manages environment variables and global settings.
 *   **`src/config/llm_config.toml`**: (Default) Configuration for the LLM model parameters (temperature, tokens, etc.).
-*   **`src/core/tools.py`**: Handles the registration of tools available to the LLM.
-
-## Project Structure
-
-```
-ai-agents/
-├── main.py                 # Application entry point
-├── Dockerfile              # Docker build instructions
-├── docker-compose.yml      # Container orchestration
-├── requirements.txt        # Python dependencies
-└── src/
-    ├── config/             # Configuration logic
-    ├── core/               # Core agent logic and tools
-    ├── db/                 # Database models and connection
-    └── services/           # Business logic (Chat Service)
-```
+*   **`src/llms/tools.py`**: Handles the registration of tools available to the LLM.
