@@ -10,3 +10,4 @@ gunicorn
 pydantic-settings
 sqlalchemy
 aiosqlite
+git+https://github.com/NickBelaneDev/generic-llm-lib.git@main
