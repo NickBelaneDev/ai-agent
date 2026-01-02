@@ -37,6 +37,7 @@ class SmartGeminiBackend:
 
     @staticmethod
     def _create_registry():
+        """Create the tool registry. For now add your tools here, but we will make this more scalable later on."""
         registry = GeminiToolRegistry()
         registry.register(request_weather_tool)
         logger.info("Created tool registry.")
@@ -95,22 +96,17 @@ class SmartGeminiBackend:
             
             # Process the turn (sends message to LLM)
             try:
-                response_text, history = await self.agent.chat(chat_object.get_history(), prompt)
+                response_text, _chat_history = await self.agent.chat(chat_object.get_history(), prompt)
             except Exception as e:
                 logger.error(f"LLM Call failed for {user_name}: {e}")
                 # Return a friendly error message instead of crashing
                 return "I'm sorry! It seems that something is wrong with my network, at least I am not working right now..."
 
-
-            # Retrieve history using the correct method
-            # This should be outdated. We already got the history from agent.chat
-            # history_list = self._manage_history(chat_object)
-            history_list = history
             # Write the serialized_history to the database
-            new_history_data = self._serialize_history(history_list)
+            new_history_data = self._serialize_history(_chat_history)
             
-            if not new_history_data and history_list:
-                logger.warning("Serialized history is empty despite history_list not being empty!")
+            if not new_history_data and _chat_history:
+                logger.warning("Serialized history is empty despite chat_history not being empty!")
 
             if not db_session:
                 db_session = ChatSession(user_name=user_name)
