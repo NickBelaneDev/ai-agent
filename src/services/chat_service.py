@@ -4,17 +4,16 @@ import json
 from sqlalchemy import select
 from google import genai
 
-from src.db.connection import AsyncSessionLocal
+from src.db.connection import AsyncSessionLocal, init_db
 from src.db.models import ChatSession
 
-from src.core.agent import GenericAgent
-from src.core.tools import AgentToolRegistry
+from llm_impl import GeminiToolRegistry, GenericGemini
 
 from src.config.config_loader import load_config
 from src.config.settings import env_settings, TIMEOUT_SECONDS
 from src.config.logging_config import logger
 
-from src.tools.example_tool import request_weather, request_weather_declaration
+from src.tools.example_tool import request_weather_tool
 
 
 class SmartGeminiBackend:
@@ -26,10 +25,8 @@ class SmartGeminiBackend:
     def __init__(self, api_key: str):
         conf = load_config()
         self._raw_client = genai.Client(api_key=api_key)
-        registry = AgentToolRegistry()
-        registry.register(request_weather, request_weather_declaration)
-
-        self.agent = GenericAgent(
+        registry = self._create_registry()
+        self.agent = GenericGemini(
             client=self._raw_client,
             model_name=conf.model,
             sys_instruction=conf.system_instruction,
@@ -37,6 +34,26 @@ class SmartGeminiBackend:
             max_tokens=conf.max_output_tokens,
             registry=registry
         )
+
+    @staticmethod
+    def _create_registry():
+        registry = GeminiToolRegistry()
+        registry.register(request_weather_tool)
+        logger.info("Created tool registry.")
+        return registry
+
+    @staticmethod
+    def _manage_history(chat_object):
+        if hasattr(chat_object, "get_history"):
+            return chat_object.get_history()
+
+        elif hasattr(chat_object, "history"):
+            return chat_object.history
+
+        else:
+            logger.warning("Could not find history on chat object.")
+            return []
+
 
     async def generate_content(self, prompt: str) -> str:
         logger.debug(f"generate_content: {prompt}")
@@ -78,21 +95,18 @@ class SmartGeminiBackend:
             
             # Process the turn (sends message to LLM)
             try:
-                response_text = await self.agent.process_chat_turn(chat_object, prompt)
+                response_text, history = await self.agent.chat(chat_object.get_history(), prompt)
             except Exception as e:
                 logger.error(f"LLM Call failed for {user_name}: {e}")
                 # Return a friendly error message instead of crashing
                 return "I'm sorry! It seems that something is wrong with my network, at least I am not working right now..."
-            
-            # Retrieve history using the correct method
-            history_list = []
-            if hasattr(chat_object, "get_history"):
-                history_list = chat_object.get_history()
-            elif hasattr(chat_object, "history"):
-                history_list = chat_object.history
-            else:
-                logger.warning("Could not find history on chat object.")
 
+
+            # Retrieve history using the correct method
+            # This should be outdated. We already got the history from agent.chat
+            # history_list = self._manage_history(chat_object)
+            history_list = history
+            # Write the serialized_history to the database
             new_history_data = self._serialize_history(history_list)
             
             if not new_history_data and history_list:
@@ -162,6 +176,7 @@ class SmartGeminiBackend:
 async def main():
     """Main async function to run the chat client for testing."""
     logger.info("Starting SmartGeminiBackend test client...")
+    await init_db()
     gemini = SmartGeminiBackend(env_settings.GEMINI_API_KEY)
 
     while True:
