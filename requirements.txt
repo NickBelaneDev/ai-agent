@@ -11,4 +11,5 @@ pydantic-settings
 sqlalchemy
 aiosqlite
 slowapi
+redis
 git+https://github.com/NickBelaneDev/generic-llm-lib.git@v0.1.1
