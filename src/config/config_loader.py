@@ -1,10 +1,9 @@
 import tomli
-
+from pathlib import Path
 from pydantic import BaseModel, Field
 from google.genai import types
 
 from src.config.logging_config import logger
-from src.config.settings import CONFIG_PATH
 
 class LLMConfigModel(BaseModel):
     model: str = "gemini-2.0-flash"
@@ -15,15 +14,15 @@ class LLMConfigModel(BaseModel):
                                "Tell the user to open the config.toml and add one.")
     tools: list[types.Tool] = []
 
-def load_config() -> LLMConfigModel:
+def load_config(path: Path) -> LLMConfigModel:
     """Loads and returns a BaseModel of the config.toml."""
     try:
-        with open(CONFIG_PATH, "rb") as f:
+        with open(path, "rb") as f:
             raw = tomli.load(f)
-        logger.info(f"Configuration loaded from: {CONFIG_PATH}")
+        logger.info(f"Configuration loaded from: {path}")
         return LLMConfigModel(**raw["config"])
     except FileNotFoundError:
-        logger.error(f"Config file not found at {CONFIG_PATH}")
+        logger.error(f"Config file not found at {path}")
         raise
     except Exception as e:
         logger.error(f"Failed to load config: {e}")

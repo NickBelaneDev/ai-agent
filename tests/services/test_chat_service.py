@@ -3,11 +3,10 @@ import asyncio
 import json
 import time
 from unittest.mock import MagicMock, AsyncMock, patch
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy import select
 
 from src.services.chat_service import SmartGeminiBackend
-from src.db.models import Base, ChatSession
+from src.db.models import ChatSession
 from src.config.settings import TIMEOUT_SECONDS
 
 # --- Fixtures ---
@@ -23,8 +22,10 @@ def mock_agent():
     agent = MagicMock()
     agent.client = MagicMock()
     agent.client.chats.create = MagicMock()
-    agent.process_chat_turn = AsyncMock()
+    agent.chat = AsyncMock()
     agent.ask = AsyncMock()
+    agent.model = "test-model"
+    agent.config = {}
     return agent
 
 @pytest.fixture
@@ -32,30 +33,17 @@ def mock_db_session():
     session = AsyncMock()
     session.execute = AsyncMock()
     session.commit = AsyncMock()
-    # session.add is synchronous in SQLAlchemy, so we use MagicMock
     session.add = MagicMock()
-    # Important: Ensure async context manager returns the session itself
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     return session
 
 @pytest.fixture
 def backend(mock_genai_client, mock_agent):
-    # We patch load_config and GenericAgent to avoid real initialization
-    with patch("src.services.chat_service.load_config") as mock_load_config, \
-         patch("src.services.chat_service.GenericAgent", return_value=mock_agent), \
-         patch("src.services.chat_service.genai.Client", return_value=mock_genai_client), \
-         patch("src.services.chat_service.AgentToolRegistry"):
-        
-        mock_config = MagicMock()
-        mock_config.model = "test-model"
-        mock_config.system_instruction = "sys"
-        mock_config.temperature = 0.5
-        mock_config.max_output_tokens = 100
-        mock_load_config.return_value = mock_config
-        
-        backend = SmartGeminiBackend("fake_key")
-        return backend
+    # Since SmartGeminiBackend now takes an agent instance directly,
+    # we can just pass the mock_agent.
+    backend = SmartGeminiBackend(mock_agent)
+    return backend
 
 # --- Tests ---
 
@@ -74,12 +62,9 @@ async def test_chat_new_user(backend):
     user_name = "new_user"
     prompt = "Hello"
     
-    # Mock DB: No existing session
     mock_db = AsyncMock()
-    # Ensure context manager returns the mock itself
     mock_db.__aenter__.return_value = mock_db
     mock_db.__aexit__.return_value = None
-    # Configure add as synchronous
     mock_db.add = MagicMock()
     
     mock_result = MagicMock()
@@ -87,11 +72,13 @@ async def test_chat_new_user(backend):
     mock_db.execute.return_value = mock_result
     
     # Mock Agent response
-    backend.agent.process_chat_turn.return_value = "Hi there"
+    # chat returns (response_text, history)
+    expected_history = [{"role": "user", "parts": [{"text": "Hello"}]}, {"role": "model", "parts": [{"text": "Hi there"}]}]
+    backend.agent.chat.return_value = ("Hi there", expected_history)
     
     # Mock Chat object history
     mock_chat_obj = MagicMock()
-    mock_chat_obj.history = [{"role": "user", "parts": [{"text": "Hello"}]}, {"role": "model", "parts": [{"text": "Hi there"}]}]
+    mock_chat_obj.get_history.return_value = []
     backend.agent.client.chats.create.return_value = mock_chat_obj
 
     with patch("src.services.chat_service.AsyncSessionLocal", return_value=mock_db):
@@ -100,13 +87,14 @@ async def test_chat_new_user(backend):
     assert response == "Hi there"
     
     # Verify DB interaction
-    mock_db.add.assert_called_once() # Should add new session
-    mock_db.commit.assert_called_once()
+    mock_db.add.assert_called_once() 
+    # Check what was added
+    added_session = mock_db.add.call_args[0][0]
+    assert isinstance(added_session, ChatSession)
+    assert added_session.user_name == user_name
+    assert json.loads(added_session.history_json) == expected_history
     
-    # Verify Agent interaction
-    backend.agent.client.chats.create.assert_called_once()
-    call_kwargs = backend.agent.client.chats.create.call_args.kwargs
-    assert call_kwargs['history'] == [] # Empty history for new user
+    mock_db.commit.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_chat_existing_user_active(backend):
@@ -114,27 +102,26 @@ async def test_chat_existing_user_active(backend):
     user_name = "active_user"
     prompt = "How are you?"
     
-    # Mock DB: Existing active session
     mock_db = AsyncMock()
     mock_db.__aenter__.return_value = mock_db
     mock_db.__aexit__.return_value = None
     mock_db.add = MagicMock()
     
+    existing_history = [{"role": "user", "parts": [{"text": "prev"}]}]
     existing_session = ChatSession(
         user_name=user_name,
-        history_json='[{"role": "user", "parts": [{"text": "prev"}]}]',
-        last_active=time.time() # Just now
+        history_json=json.dumps(existing_history),
+        last_active=time.time()
     )
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_session
     mock_db.execute.return_value = mock_result
     
-    # Mock Agent response
-    backend.agent.process_chat_turn.return_value = "I am good"
+    new_history = existing_history + [{"role": "user", "parts": [{"text": "How are you?"}]}, {"role": "model", "parts": [{"text": "I am good"}]}]
+    backend.agent.chat.return_value = ("I am good", new_history)
     
-    # Mock Chat object
     mock_chat_obj = MagicMock()
-    mock_chat_obj.history = [] # Simplified for this test
+    mock_chat_obj.get_history.return_value = existing_history
     backend.agent.client.chats.create.return_value = mock_chat_obj
 
     with patch("src.services.chat_service.AsyncSessionLocal", return_value=mock_db):
@@ -142,12 +129,14 @@ async def test_chat_existing_user_active(backend):
     
     assert response == "I am good"
     
-    # Verify Agent interaction
+    # Verify history was loaded
     backend.agent.client.chats.create.assert_called_once()
     call_kwargs = backend.agent.client.chats.create.call_args.kwargs
-    # Should have loaded history
-    assert len(call_kwargs['history']) == 1 
-    assert call_kwargs['history'][0]['role'] == 'user'
+    assert call_kwargs['history'] == existing_history
+    
+    # Verify DB update
+    assert json.loads(existing_session.history_json) == new_history
+    mock_db.commit.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_chat_existing_user_expired(backend):
@@ -155,7 +144,6 @@ async def test_chat_existing_user_expired(backend):
     user_name = "expired_user"
     prompt = "New topic"
     
-    # Mock DB: Existing expired session
     mock_db = AsyncMock()
     mock_db.__aenter__.return_value = mock_db
     mock_db.__aexit__.return_value = None
@@ -164,18 +152,17 @@ async def test_chat_existing_user_expired(backend):
     existing_session = ChatSession(
         user_name=user_name,
         history_json='[{"role": "user", "parts": [{"text": "old stuff"}]}]',
-        last_active=time.time() - (TIMEOUT_SECONDS + 100) # Expired
+        last_active=time.time() - (TIMEOUT_SECONDS + 100)
     )
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_session
     mock_db.execute.return_value = mock_result
     
-    # Mock Agent response
-    backend.agent.process_chat_turn.return_value = "Sure"
+    new_history = [{"role": "user", "parts": [{"text": "New topic"}]}, {"role": "model", "parts": [{"text": "Sure"}]}]
+    backend.agent.chat.return_value = ("Sure", new_history)
     
-    # Mock Chat object
     mock_chat_obj = MagicMock()
-    mock_chat_obj.history = []
+    mock_chat_obj.get_history.return_value = []
     backend.agent.client.chats.create.return_value = mock_chat_obj
 
     with patch("src.services.chat_service.AsyncSessionLocal", return_value=mock_db):
@@ -183,11 +170,13 @@ async def test_chat_existing_user_expired(backend):
     
     assert response == "Sure"
     
-    # Verify Agent interaction
+    # Verify history was NOT loaded (empty list passed)
     backend.agent.client.chats.create.assert_called_once()
     call_kwargs = backend.agent.client.chats.create.call_args.kwargs
-    # Should have EMPTY history because session expired
     assert call_kwargs['history'] == []
+    
+    # Verify DB update (should overwrite history)
+    assert json.loads(existing_session.history_json) == new_history
 
 @pytest.mark.asyncio
 async def test_chat_concurrent_users(backend):
@@ -195,45 +184,30 @@ async def test_chat_concurrent_users(backend):
     user1 = "user1"
     user2 = "user2"
     
-    # We need a side_effect for the DB session to return different mock sessions or handle concurrency
-    # Since AsyncSessionLocal is a context manager, we mock it to return a new mock DB session each time
-    
-    async def chat_simulation(user, prompt, response_text):
-        # Create a fresh mock DB for this call
+    async def chat_simulation(user, prompt):
         mock_db = AsyncMock()
         mock_db.__aenter__.return_value = mock_db
         mock_db.__aexit__.return_value = None
         mock_db.add = MagicMock()
         
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None # Treat as new user for simplicity
+        mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
         
-        # Mock agent response for this specific call
-        # We can't easily change the agent mock per call in parallel, 
-        # so we'll rely on the return value being what we expect if the logic holds.
-        # Instead, let's mock process_chat_turn to return the response_text passed in.
-        
-        # NOTE: In a real concurrent test with a shared mock, we'd need more complex setup.
-        # Here we verify that the method can be awaited concurrently.
-        
         with patch("src.services.chat_service.AsyncSessionLocal", return_value=mock_db):
-             # We patch process_chat_turn locally if possible, or assume the shared mock returns something generic
-             # Let's make the shared mock return the prompt as an echo to distinguish
-             backend.agent.process_chat_turn.side_effect = lambda chat, p: f"Echo: {p}"
-             
              return await backend.chat(user, prompt)
 
-    # Run two chats concurrently
+    # We need backend.agent.chat to return something valid
+    backend.agent.chat.side_effect = lambda h, p: (f"Echo: {p}", [])
+
     results = await asyncio.gather(
-        chat_simulation(user1, "Hello from 1", "Echo: Hello from 1"),
-        chat_simulation(user2, "Hello from 2", "Echo: Hello from 2")
+        chat_simulation(user1, "Hello from 1"),
+        chat_simulation(user2, "Hello from 2")
     )
     
     assert results[0] == "Echo: Hello from 1"
     assert results[1] == "Echo: Hello from 2"
     
-    # Verify that create_chat was called twice (once for each user)
     assert backend.agent.client.chats.create.call_count == 2
 
 @pytest.mark.asyncio
@@ -244,20 +218,39 @@ async def test_chat_llm_failure(backend):
     mock_db = AsyncMock()
     mock_db.__aenter__.return_value = mock_db
     mock_db.__aexit__.return_value = None
-    mock_db.add = MagicMock()
 
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_db.execute.return_value = mock_result
     
-    # Simulate LLM raising an exception
-    backend.agent.process_chat_turn.side_effect = Exception("API Error")
+    backend.agent.chat.side_effect = Exception("API Error")
     
     mock_chat_obj = MagicMock()
+    mock_chat_obj.get_history.return_value = []
     backend.agent.client.chats.create.return_value = mock_chat_obj
 
     with patch("src.services.chat_service.AsyncSessionLocal", return_value=mock_db):
         response = await backend.chat(user_name, "Hi")
     
-    # Should return the friendly error message defined in chat_service.py
     assert "something is wrong with my network" in response
+
+def test_serialize_history_simple():
+    """Test serialization of simple dicts."""
+    history = [{"role": "user", "parts": [{"text": "hi"}]}]
+    serialized = SmartGeminiBackend._serialize_history(history)
+    assert serialized == history
+
+def test_serialize_history_genai_fallback():
+    """Test serialization of Google GenAI-like objects."""
+    class MockPart:
+        def __init__(self, text):
+            self.text = text
+            
+    class MockItem:
+        def __init__(self, role, parts):
+            self.role = role
+            self.parts = parts
+            
+    history = [MockItem("user", [MockPart("test")])]
+    serialized = SmartGeminiBackend._serialize_history(history)
+    assert serialized == [{"role": "user", "parts": [{"text": "test"}]}]
