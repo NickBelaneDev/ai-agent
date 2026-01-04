@@ -74,6 +74,7 @@ class ChatRequest(BaseModel):
     """Defines the structure for a chat request body."""
     user_name: str
     prompt: str
+    session_id: str | None = None
 
 @app.get("/")
 async def root():
@@ -94,12 +95,11 @@ async def chat_json(request: Request,
                     chat_req: ChatRequest,
                     gemini: SmartGeminiBackend = Depends(get_gemini_backend)):
     """
-    Receives a chat prompt and returns the response as a JSON array of strings,
-    with each string being a line of the response.
+    Receives a chat prompt and returns the response as a JSON object.
     """
-    logger.info(f">> Incoming JSON request: player='{chat_req.user_name}', prompt='{chat_req.prompt}'")
-    response = await gemini.chat(chat_req.user_name, chat_req.prompt)
-    return {"response": response}
+    logger.info(f">> Incoming JSON request: player='{chat_req.user_name}', prompt='{chat_req.prompt}', session_id='{chat_req.session_id}'")
+    response_text, session_id = await gemini.chat(chat_req.user_name, chat_req.prompt, chat_req.session_id)
+    return {"response": response_text, "session_id": session_id}
 
 @app.post("/gemini/chat/text", dependencies=[Depends(verify_api_token)])
 @limiter.limit("10/minute")
@@ -107,14 +107,14 @@ async def chat_text(request: Request,
                     chat_req: ChatRequest,
                     gemini: SmartGeminiBackend = Depends(get_gemini_backend)):
     """
-    Receives a chat prompt and returns the response as a single plain text block,
-    with lines separated by newline characters.
+    Receives a chat prompt and returns the response as a single plain text block.
+    The session_id is returned in the X-Session-ID header.
     """
-    logger.info(f">> Incoming Text request: player='{chat_req.user_name}', prompt='{chat_req.prompt}'")
-    response = await gemini.chat(chat_req.user_name, chat_req.prompt)
-    # Join the list of lines into a single string with newlines for the PlainTextResponse
-    logger.debug(f"response: {response}")
-    return PlainTextResponse(response)
+    logger.info(f">> Incoming Text request: player='{chat_req.user_name}', prompt='{chat_req.prompt}', session_id='{chat_req.session_id}'")
+    response_text, session_id = await gemini.chat(chat_req.user_name, chat_req.prompt, chat_req.session_id)
+    
+    logger.debug(f"response: {response_text}")
+    return PlainTextResponse(response_text, headers={"X-Session-ID": session_id})
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

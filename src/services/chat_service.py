@@ -1,17 +1,16 @@
-import asyncio
 import time
 import json
-from collections import Counter
 
 from google.genai.types import Content, ContentDict
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 from fastapi import HTTPException
 
-from ..db.connection import AsyncSessionLocal, init_db
+from ..db.connection import AsyncSessionLocal
 from ..db.models import ChatSession
+from ..db.service import ChatSessionDBService
 
-from llm_impl import GenericGemini
+from llm_impl import GenericGemini, GeminiChatResponse, GeminiTokens
 
 from ..config.settings import TIMEOUT_SECONDS, env_settings
 from ..config.logging_config import logger
@@ -26,97 +25,126 @@ class SmartGeminiBackend:
         self.agent = agent
 
     async def generate_content(self, prompt: str) -> str:
+        """This methode includes no function calling, it is just for texting! We should update that..."""
         logger.debug(f"generate_content: {prompt}")
-        return await self.agent.ask(prompt)
+        response = await self.agent.ask(prompt)
+        return response.text
 
-    async def chat(self, user_name: str, prompt: str) -> str:
+    async def chat(self, user_name: str,
+                   prompt: str,
+                   session_id: str = None) -> tuple[str, str]:
         """
         Handles a single chat turn for a given user.
         Checks if the previous session is expired (older than TIMEOUT_SECONDS).
+        
+        Returns a tuple of (response_text, session_id).
         """
-        logger.debug(f"chat: {user_name=}, prompt={prompt[:50]}...")
+        logger.debug(f"chat: {user_name=}, {session_id=}, prompt={prompt[:50]}...")
 
         async with AsyncSessionLocal() as db:
+            db_service = ChatSessionDBService(db)
             try:
-                # Attempt to get or create the session
-                result = await db.execute(select(ChatSession).where(ChatSession.user_name == user_name))
-                db_session = result.scalar_one_or_none()
-                current_time = time.time()
+                # 1. LOAD SESSION FROM SESSION_ID OR USER_NAME
+                db_session = await db_service.get_session(session_id, user_name)
+                
+                current_time: float = time.time()
+                history: list[Content | ContentDict] = []
 
-                history = self._manage_user_history(db_session, current_time, user_name)
-
-                # Process the turn (sends message to LLM)
+                # 2. CHECK EXPIRATION & LOAD HISTORY
+                if db_session:
+                    is_expired = (current_time - db_session.last_active) > TIMEOUT_SECONDS
+                    
+                    if is_expired:
+                        logger.info(f"Session {db_session.session_id} for {user_name} has expired.")
+                        if session_id is None:
+                            # If user didn't request this specific session, drop it and start fresh.
+                            logger.info(">> Starting a new session because the previous one expired.")
+                            db_session = None
+                        else:
+                            # If user requested this session specifically, we keep the ID but reset state.
+                            logger.info("Resetting expired session state (keeping ID).")
+                            db_session.token_count = 0
+                            # History remains empty []
+                    else:
+                        # Session is active, load history
+                        history = self._load_history(db_session, user_name)
+                
+                # 3. CHECK TOKEN LIMIT
+                if db_session:
+                    self._check_token_limit(db_session)
+                
+                # 4. PROCESS (LLM Call)
                 try:
-                    response_text, _chat_history = await self.agent.chat(history, prompt) # CHECK HERE
+                    chat_response: GeminiChatResponse = await self.agent.chat(history, prompt)
                 except Exception as e:
-                    logger.error(f"LLM Call failed for {user_name}: {e}")
-                    # Raise an HTTPException to inform the client about the failure
+                    logger.exception(f"LLM Call failed for {user_name}: {e}")
                     raise HTTPException(status_code=503, detail="The AI service is currently unavailable.")
 
-                # Write the serialized_history to the database
-                new_history_data = self._serialize_history(_chat_history)
-                if not new_history_data and _chat_history:
+                # 5. SAVE (Update DB)
+                # Serialize the NEW, complete history returned by the agent
+                new_history_data: list[dict] = self._serialize_history(chat_response.history)
+                if not new_history_data and chat_response.history:
                     logger.warning("Serialized history is empty despite chat_history not being empty!")
 
-                # Instantiate a new ChatSession, if it does not exist yet
+                _gemini_tokens: GeminiTokens = chat_response.last_response.tokens
+                token_usage = _gemini_tokens.total_token_count if _gemini_tokens else 0
+
                 if not db_session:
-                    db_session = ChatSession(user_name=user_name)
-                    db.add(db_session)
-
-                # Update the chat history
-                db_session.history_json = json.dumps(new_history_data)
-                db_session.last_active = current_time
-
-                await db.commit()
-
-            except IntegrityError:
-                await db.rollback()
-                logger.warning(f"Race condition detected for user {user_name}. Retrying...")
-                # The session was created by another request, so we fetch it and retry
-                result = await db.execute(select(ChatSession).where(ChatSession.user_name == user_name))
-                db_session = result.scalar_one()
+                    # Create new session if none existed or previous was expired/dropped
+                    db_session = await db_service.create_session(user_name, session_id)
                 
-                # And now we can continue with the logic, but we need to re-run the chat
-                # This could be refactored to avoid code duplication
-                return await self.chat(user_name, prompt)
+                await db_service.update_session(db_session, new_history_data, token_usage)
+                await db_service.commit()
+                
+                return chat_response.last_response.text, str(db_session.session_id)
 
-        # Finally we send the text response
-        return response_text
+            except (IntegrityError, StaleDataError):
+                await db_service.rollback()
+                logger.warning(f"Race condition detected for user {user_name}. Retrying...")
+                # Retry logic
+                return await self.chat(user_name, prompt, session_id)
 
-
-    def _manage_user_history(self, db_session, current_time, user_name) ->  list[Content | ContentDict]:
-        """Check if there is an existing history for the user and if it is less the TIMEOUT_SECONDS long, since the latest reply.
-        This way we can prevent too long chat histories."""
-        if db_session:
-            if (current_time - db_session.last_active) > TIMEOUT_SECONDS:
-                logger.info(
-                    f"Session for {user_name} has expired (inactive > {TIMEOUT_SECONDS}s). Starting a new context.")
-                history = []
-            else:
-                try:
-                    history = json.loads(db_session.history_json)
-                    logger.info(f"Successfully loaded the history for {user_name}. Items: {len(history)}")
-                    history = self._strip_history_length(history)
-
-                except json.JSONDecodeError:
-                    logger.error(f"Error at loading history for {user_name}. Start again!")
-                    history = []
-        else:
-            history = []
-        return history
+    def _load_history(self,
+                      db_session: ChatSession,
+                      user_name: str) -> list[Content | ContentDict]:
+        """Loads and strips history from the DB session."""
+        try:
+            history = json.loads(db_session.history_json)
+            logger.debug(f"Successfully loaded history for {user_name}. Items: {len(history)}")
+            return self._strip_history_length(history)
+        except json.JSONDecodeError:
+            logger.error(f"Error loading history for {user_name}. Returning empty.")
+            return []
 
     @staticmethod
-    def _strip_history_length(history: list):
-        """To prevent big chats, we will make sure, that the history of a chat can not be longer than 20 messages."""
+    def _strip_history_length(history: list[Content | ContentDict]):
+        """To prevent big chats, we will make sure, that the history of a chat can not be larger 
+        than env_settings.MAX_HISTORY_LENGTH."""
+        
         if len(history) >= env_settings.MAX_HISTORY_LENGTH:
-            _text = history[0]['parts'][0]['text']
+            # Safe access to text for logging, assuming structure
+            try:
+                _text = history[0]['parts'][0]['text']
+            except (KeyError, IndexError, TypeError):
+                _text = "..."
             logger.warning(f"History of the chat: {_text[:50]} is too long!")
             return history[-env_settings.MAX_HISTORY_LENGTH:]
         return history
-
+    
+    @staticmethod
+    def _check_token_limit(db_session: ChatSession,
+                           max_tokens: int = env_settings.MAX_TOKENS_PER_CHAT_SESSION):
+        """Prevent chats from becoming too big, by cutting a max_tokens for a complete chat.
+        In case, that the history is shorter than env_settings.MAX_HISTORY_LENGTH, we secure our
+        wallet with a maximum tokens per chat."""
+        
+        # Check if the accumulated tokens exceed the limit
+        logger.info(f"Session_ID: {db_session.session_id} has used {db_session.token_count} Tokens out of {max_tokens}.")
+        if db_session.token_count and db_session.token_count >= max_tokens:
+            raise HTTPException(status_code=400, detail=f"Token limit exceeded. Please start a new or wait {TIMEOUT_SECONDS}s.")
 
     @staticmethod
-    def _serialize_history(history_list: list) -> list[dict]:
+    def _serialize_history(history_list: list[Content | ContentDict]) -> list[dict]:
         """
         Serializes a list of chat history items (e.g., Google GenAI Content objects)
         into a list of dictionaries suitable for JSON storage.
@@ -137,42 +165,23 @@ class SmartGeminiBackend:
             elif isinstance(item, dict):
                 serialized.append(item)
             else:
-                logger.warning(
-                    f"Could not serialize history item of type {type(item)}. "
-                    f"It will be skipped, which may lead to an incomplete chat history."
-                )
+                # Fallback: try to construct dict from attributes if possible, or skip
+                try:
+                    # Basic attempt to capture role and parts if they exist
+                    if hasattr(item, "role") and hasattr(item, "parts"):
+                        parts_data = []
+                        for part in item.parts:
+                            if hasattr(part, "text"):
+                                parts_data.append({"text": part.text})
+                            elif isinstance(part, dict):
+                                parts_data.append(part)
+                        serialized.append({"role": item.role, "parts": parts_data})
+                    else:
+                        logger.warning(
+                            f"Could not serialize history item of type {type(item)}. "
+                            f"It will be skipped."
+                        )
+                except Exception as e:
+                     logger.warning(f"Serialization fallback failed for {type(item)}: {e}")
 
         return serialized
-
-
-# A small test function for the chat service.
-async def main():
-    """Main async function to run the chat client for testing."""
-    logger.info("Starting SmartGeminiBackend test client...")
-    await init_db()
-    
-    # Import locally to avoid circular imports or path issues during normal execution if not needed
-    try:
-        from src.llms.gemini_default.gemini import DefaultGeminiLLM
-        gemini = SmartGeminiBackend(DefaultGeminiLLM)
-    except ImportError:
-        logger.warning("Could not import DefaultGeminiLLM. Test client might fail.")
-        return
-
-    while True:
-        user_prompt = input("\nYou> ")
-        if user_prompt.lower() in ["exit", "quit"]:
-            break
-        response_lines = await gemini.chat("User1", user_prompt)
-
-        # Print each line of the response, simulating how Minecraft would show it.
-        # We keep print here as it is the UI for the test client
-        if isinstance(response_lines, list):
-             for line in response_lines:
-                print(f"LLM: {line}")
-        else:
-             print(f"LLM: {response_lines}")
-
-if __name__ == "__main__":
-    # To run an async function from the top level, you use asyncio.run()
-    asyncio.run(main())

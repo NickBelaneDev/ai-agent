@@ -11,6 +11,7 @@ class EnvSettings(BaseSettings):
     DATABASE_URL: str
     APP_API_TOKEN: str
     MAX_HISTORY_LENGTH: int
+    MAX_TOKENS_PER_CHAT_SESSION: int
     REDIS_URL: str | None = None
     
     # Optional: Allow overriding paths via environment variables

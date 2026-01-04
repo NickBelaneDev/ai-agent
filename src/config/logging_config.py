@@ -29,4 +29,4 @@ def setup_logging(name: str = "ai_agents",
     return logger
 
 # Create a default logger instance
-logger = setup_logging()
+logger = setup_logging(log_level=logging.DEBUG)

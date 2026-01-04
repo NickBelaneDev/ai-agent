@@ -24,8 +24,11 @@ temperature = 0.5
 
 @pytest.fixture
 def mock_config_path():
-    with patch("src.config.config_loader.CONFIG_PATH", "dummy_path.toml") as mock_path:
-        yield mock_path
+    # Since we removed CONFIG_PATH from config_loader.py and now pass path as argument
+    # or rely on caller to provide it, we don't need to patch CONFIG_PATH global.
+    # However, load_config signature is load_config(path: Path).
+    # We will pass a dummy path in tests.
+    return "dummy_path.toml"
 
 def test_llm_config_model_validation():
     """Test Pydantic model validation."""
@@ -63,7 +66,7 @@ def test_llm_config_model_validation():
 def test_load_config_success(mock_config_path):
     """Test successful loading of configuration."""
     with patch("builtins.open", mock_open(read_data=VALID_TOML)):
-        config = load_config()
+        config = load_config(mock_config_path)
         
         assert isinstance(config, LLMConfigModel)
         assert config.model == "gemini-pro-test"
@@ -76,16 +79,16 @@ def test_load_config_file_not_found(mock_config_path):
     """Test handling of missing config file."""
     with patch("builtins.open", side_effect=FileNotFoundError):
         with pytest.raises(FileNotFoundError):
-            load_config()
+            load_config(mock_config_path)
 
 def test_load_config_invalid_toml(mock_config_path):
     """Test handling of invalid TOML structure (parsing error)."""
     with patch("builtins.open", mock_open(read_data=b"invalid toml [")):
         with pytest.raises(tomli.TOMLDecodeError):
-            load_config()
+            load_config(mock_config_path)
 
 def test_load_config_validation_error(mock_config_path):
     """Test handling of valid TOML but invalid data for the model."""
     with patch("builtins.open", mock_open(read_data=INVALID_TOML)):
         with pytest.raises(Exception): # Pydantic validation error
-            load_config()
+            load_config(mock_config_path)
