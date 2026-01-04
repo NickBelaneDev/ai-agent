@@ -15,7 +15,7 @@ def test_env_settings_validation():
     # Even with os.environ cleared, pydantic-settings might still read from the .env file
     # because it's defined in model_config.
     # We need to ensure it doesn't find the .env file either.
-    
+
     with patch.dict(os.environ, {}, clear=True):
         # We override the env_file to a non-existent file to ensure it doesn't pick up the real .env
         class TestEnvSettings(EnvSettings):
@@ -36,12 +36,13 @@ def test_env_settings_instantiation():
     assert settings.DATABASE_URL == "sqlite:///test.db"
     assert settings.APP_API_TOKEN == "test_token"
     assert settings.PROJECT_ROOT is None
-    assert settings.HOME_AGENT_CONFIG_PATH is None
+    # HOME_AGENT_CONFIG_PATH was removed from EnvSettings, so we shouldn't check for it here
+    # assert settings.HOME_AGENT_CONFIG_PATH is None
 
 def test_path_logic_defaults():
     """Test the path calculation logic that happens in settings.py"""
     # We simulate the logic from settings.py
-    
+
     # 1. Create a settings instance with no paths set
     settings = EnvSettings(
         GEMINI_API_KEY="test",
@@ -56,33 +57,22 @@ def test_path_logic_defaults():
         mock_file_path = Path("/app/src/config/settings.py")
         settings.PROJECT_ROOT = mock_file_path.parent.parent.parent
         
-    if settings.HOME_AGENT_CONFIG_PATH is None:
-        mock_file_path = Path("/app/src/config/settings.py")
-        settings.HOME_AGENT_CONFIG_PATH = mock_file_path.parent / "llm_config.toml"
-        
     # 3. Assertions
     assert settings.PROJECT_ROOT == Path("/app")
-    assert settings.HOME_AGENT_CONFIG_PATH == Path("/app/src/config/llm_config.toml")
 
 def test_path_logic_overrides():
     """Test that environment variables can override the paths."""
     custom_root = Path("/custom/root")
-    custom_config = Path("/custom/config.toml")
     
     settings = EnvSettings(
         GEMINI_API_KEY="test",
         DATABASE_URL="test",
         APP_API_TOKEN="test",
-        PROJECT_ROOT=custom_root,
-        HOME_AGENT_CONFIG_PATH=custom_config
+        PROJECT_ROOT=custom_root
     )
     
     # The logic in settings.py checks for None, so these shouldn't change
     if settings.PROJECT_ROOT is None:
         settings.PROJECT_ROOT = Path("should_not_happen")
         
-    if settings.HOME_AGENT_CONFIG_PATH is None:
-        settings.HOME_AGENT_CONFIG_PATH = Path("should_not_happen")
-        
     assert settings.PROJECT_ROOT == custom_root
-    assert settings.HOME_AGENT_CONFIG_PATH == custom_config

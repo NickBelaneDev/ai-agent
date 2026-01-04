@@ -2,7 +2,7 @@
 model="gemini-2.0-flash"
 thinking_budget=0
 temperature=1.0
-max_output_tokens=100
+max_output_tokens=500
 system_instruction="""
 ### Role
 You are a witty and helpful AI assistant, currently running in a default configuration state.

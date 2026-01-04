@@ -30,5 +30,6 @@ def load_config(path: Path) -> LLMConfigModel:
 
 
 if __name__ == "__main__":
-    config = load_config()
-    print(config)
+    # This will fail if run directly without arguments, but that's expected for a library module
+    # or we could add a default path for testing
+    pass
