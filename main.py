@@ -89,7 +89,7 @@ async def generate_content(request: Request,
     return {"response": response}
 
 @app.post("/gemini/chat", dependencies=[Depends(verify_api_token)])
-@limiter.limit("20/minute")
+@limiter.limit("10/minute")
 async def chat_json(request: Request,
                     chat_req: ChatRequest,
                     gemini: SmartGeminiBackend = Depends(get_gemini_backend)):
@@ -102,7 +102,7 @@ async def chat_json(request: Request,
     return {"response": response}
 
 @app.post("/gemini/chat/text", dependencies=[Depends(verify_api_token)])
-@limiter.limit("20/minute")
+@limiter.limit("10/minute")
 async def chat_text(request: Request,
                     chat_req: ChatRequest,
                     gemini: SmartGeminiBackend = Depends(get_gemini_backend)):

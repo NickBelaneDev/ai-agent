@@ -3,10 +3,14 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.config.logging_config import logger
+
+
 class EnvSettings(BaseSettings):
     GEMINI_API_KEY: str
     DATABASE_URL: str
     APP_API_TOKEN: str
+    MAX_HISTORY_LENGTH: int
     REDIS_URL: str | None = None
     
     # Optional: Allow overriding paths via environment variables
@@ -20,7 +24,7 @@ class EnvSettings(BaseSettings):
 # --- Environment & Path Setup ---
 load_dotenv(find_dotenv())
 env_settings = EnvSettings()
-
+logger.info(f"Successfully loaded all settings: {env_settings.MAX_HISTORY_LENGTH}")
 # --- Default Path Logic ---
 # If PROJECT_ROOT is not set via env var, calculate it relative to this file.
 if env_settings.PROJECT_ROOT is None:

@@ -7,10 +7,8 @@ services:
     env_file:
       - .env
     restart: always
-    volumes:
-      - /opt/docker/ai-agent:/app
     environment:
-      - REDIS_URL=redis://redis:6379/0  # Damit dein Agent weiß, wo Redis ist
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       - redis
 
