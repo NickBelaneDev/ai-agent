@@ -5,3 +5,4 @@
 /db_debugging.py
 /inspect_chat_object.py
 /inspect_history_items.py
+/src/services/chat_database.db
