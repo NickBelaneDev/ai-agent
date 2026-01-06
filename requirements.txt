@@ -12,4 +12,4 @@ sqlalchemy~=2.0.45
 aiosqlite~=0.22.1
 slowapi~=0.1.9
 redis~=7.1.0
-git+https://github.com/NickBelaneDev/generic-llm-lib.git@v0.1.1
+git+https://github.com/NickBelaneDev/generic-llm-lib.git@v0.2.0
