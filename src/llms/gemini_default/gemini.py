@@ -4,12 +4,30 @@ from ...config.settings import env_settings
 from ...config.config_loader import load_config, LLMConfigModel
 from .tool_registry import tool_registry
 from google import genai
+from ...config.logging_config import logger
 
+# Lazy initialization pattern
+_default_gemini_llm = None
 
-
-config_path =  Path(__file__).parent / "llm_config.toml"
-
-conf = load_config(path=config_path)
+def get_default_gemini_llm() -> GenericGemini:
+    """
+    Returns the singleton instance of the DefaultGeminiLLM.
+    Initializes it on the first call.
+    """
+    global _default_gemini_llm
+    if _default_gemini_llm is None:
+        logger.info("Initializing DefaultGeminiLLM...")
+        try:
+            config_path = Path(__file__).parent / "llm_config.toml"
+            conf = load_config(path=config_path)
+            
+            _default_gemini_llm = _init_new_llm(env_settings.GEMINI_API_KEY, conf, tool_registry)
+            logger.info("DefaultGeminiLLM initialized successfully.")
+        except Exception as e:
+            logger.critical(f"Failed to initialize DefaultGeminiLLM: {e}")
+            raise
+            
+    return _default_gemini_llm
 
 def _init_new_llm(api_key: str, conf: LLMConfigModel, registry: GeminiToolRegistry):
      # Wenn wir hier den Path von einer config.toml geben, könnte man so modular LLMs erzeugen.
@@ -24,5 +42,3 @@ def _init_new_llm(api_key: str, conf: LLMConfigModel, registry: GeminiToolRegist
         registry=registry
     )
     return new_llm
-
-DefaultGeminiLLM = _init_new_llm(env_settings.GEMINI_API_KEY, conf, tool_registry)

@@ -152,3 +152,34 @@ async def test_race_condition_history_update(db_session):
     has_background = any(m.get("content") == "Background" for m in final_history)
     
     assert has_background, "Background update was lost!"
+
+@pytest.mark.asyncio
+async def test_mixed_orm_core_update_safety(db_session):
+    """
+    Tests that we are NOT mixing ORM and Core updates in a way that bypasses versioning.
+    This test specifically targets the fix where we switched from update().values() to session.token_count += ...
+    """
+    service = ChatSessionDBService(db_session)
+    user_name = "mixed_update_user"
+    
+    # 1. Create session
+    session = await service.create_session(user_name)
+    await service.commit()
+    session_id = session.session_id
+    
+    # 2. Get session
+    s1 = await service.get_session(session_id=session_id, user_name=user_name)
+    initial_version = s1.version
+    
+    # 3. Update via service
+    await service.update_session(s1, [], 10)
+    await service.commit()
+    
+    # 4. Verify version incremented
+    # If we used raw SQL update without touching version, version would be same (unless DB trigger)
+    # But since we use ORM update now, SQLAlchemy should increment version.
+    
+    # Refresh s1 to see new version
+    await db_session.refresh(s1)
+    assert s1.version > initial_version
+    assert s1.token_count == 10

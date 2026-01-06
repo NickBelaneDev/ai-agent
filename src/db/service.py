@@ -95,31 +95,41 @@ class ChatSessionDBService:
             history_json="[]"
         )
         self.db.add(new_session)
+        await self.db.flush()
         logger.info(f"Session {new_session_id} created for user {user_name}.")
         return new_session
 
-
-    async def update_session(self, session: ChatSession, history_data: list[dict], token_usage: int):
+    async def update_session(self, session: ChatSession, history_data: list[dict], token_usage: int, reset_token_count: bool = False):
         """
         Updates an existing session with new history and token usage.
+        Uses an atomic update for token_count to prevent race conditions.
         """
-        logger.debug(f">> Updating session {session.session_id}. Token usage: {token_usage}")
+        logger.debug(f">> Updating session {session.session_id}. Token usage: {token_usage}, Reset: {reset_token_count}")
         
         # Update history and last_active on the object (these are absolute updates)
         session.history_json = json.dumps(history_data)
         session.last_active = time.time()
         
-        # Use atomic update for token_count to prevent race conditions
-        stmt = (
-            update(ChatSession)
-            .where(ChatSession.session_id == session.session_id)
-            .values(token_count=ChatSession.token_count + token_usage)
-        )
+        # Atomic update for token_count
+        if reset_token_count:
+            stmt = (
+                update(ChatSession)
+                .where(ChatSession.session_id == session.session_id)
+                .values(token_count=token_usage)
+            )
+            # Also update the local object to reflect the change immediately
+            session.token_count = token_usage
+        else:
+            stmt = (
+                update(ChatSession)
+                .where(ChatSession.session_id == session.session_id)
+                .values(token_count=ChatSession.token_count + token_usage)
+            )
+            # We expire the attribute so the next access fetches the new value from DB.
+            # We avoid 'session.token_count += token_usage' to prevent implicit IO on expired objects.
+            self.db.expire(session, ['token_count'])
+
         await self.db.execute(stmt)
-        
-        # Note: We don't update session.token_count on the object here because
-        # it would require a refresh to get the new DB value.
-        # If the caller needs the new value, they should refresh the session.
 
     async def commit(self):
         logger.debug(">> Committing database transaction.")

@@ -1,10 +1,12 @@
 import time
 import json
+import asyncio
 
 from google.genai.types import Content, ContentDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from fastapi import HTTPException
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
 from ..db.connection import AsyncSessionLocal
 from ..db.models import ChatSession
@@ -30,6 +32,12 @@ class SmartGeminiBackend:
         response = await self.agent.ask(prompt)
         return response.text
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(0.5),
+        retry=retry_if_exception_type((IntegrityError, StaleDataError)),
+        reraise=True
+    )
     async def chat(self, user_name: str,
                    prompt: str,
                    session_id: str = None) -> tuple[str, str]:
@@ -41,46 +49,62 @@ class SmartGeminiBackend:
         """
         logger.debug(f"chat: {user_name=}, {session_id=}, prompt={prompt[:50]}...")
 
+        # --- Phase 1: Load Context (DB) ---
+        history: list[Content | ContentDict] = []
+        db_session_data = None
+        
         async with AsyncSessionLocal() as db:
             db_service = ChatSessionDBService(db)
             try:
                 # 1. LOAD SESSION FROM SESSION_ID OR USER_NAME
-                db_session = await db_service.get_session(session_id, user_name)
+                # Use a distinct variable name to avoid confusion with Phase 3
+                initial_db_session = await db_service.get_session(session_id, user_name)
                 
                 current_time: float = time.time()
-                history: list[Content | ContentDict] = []
 
                 # 2. CHECK EXPIRATION & LOAD HISTORY
-                if db_session:
-                    is_expired = (current_time - db_session.last_active) > TIMEOUT_SECONDS
+                if initial_db_session:
+                    is_expired = (current_time - initial_db_session.last_active) > TIMEOUT_SECONDS
                     
                     if is_expired:
-                        logger.info(f"Session {db_session.session_id} for {user_name} has expired.")
+                        logger.info(f"Session {initial_db_session.session_id} for {user_name} has expired.")
                         if session_id is None:
                             # If user didn't request this specific session, drop it and start fresh.
                             logger.info(">> Starting a new session because the previous one expired.")
-                            db_session = None
+                            initial_db_session = None
                         else:
                             # If user requested this session specifically, we keep the ID but reset state.
                             logger.info("Resetting expired session state (keeping ID).")
-                            db_session.token_count = 0
-                            # History remains empty []
+                            # We mark it for reset, but don't write to DB yet.
+                            db_session_data = {"session_id": initial_db_session.session_id, "token_count": 0, "reset": True}
                     else:
                         # Session is active, load history
-                        history = self._load_history(db_session, user_name)
+                        history = self._load_history(initial_db_session, user_name)
+                        db_session_data = {
+                            "session_id": initial_db_session.session_id, 
+                            "token_count": initial_db_session.token_count,
+                            "reset": False
+                        }
                 
                 # 3. CHECK TOKEN LIMIT
-                if db_session:
-                    self._check_token_limit(db_session)
-                
-                # 4. PROCESS (LLM Call)
-                try:
-                    chat_response: GeminiChatResponse = await self.agent.chat(history, prompt)
-                except Exception as e:
-                    logger.exception(f"LLM Call failed for {user_name}: {e}")
-                    raise HTTPException(status_code=503, detail="The AI service is currently unavailable.")
+                if initial_db_session and not (db_session_data and db_session_data.get("reset")):
+                    self._check_token_limit(initial_db_session)
+            
+            except Exception as e:
+                logger.error(f"Error loading session for {user_name}: {e}")
+                raise
 
-                # 5. SAVE (Update DB)
+        # --- Phase 2: Process (LLM Call) - No DB Connection ---
+        try:
+            chat_response: GeminiChatResponse = await self.agent.chat(history, prompt)
+        except Exception as e:
+            logger.exception(f"LLM Call failed for {user_name}: {e}")
+            raise HTTPException(status_code=503, detail="The AI service is currently unavailable.")
+
+        # --- Phase 3: Save State (DB) ---
+        async with AsyncSessionLocal() as db:
+            db_service = ChatSessionDBService(db)
+            try:
                 # Serialize the NEW, complete history returned by the agent
                 new_history_data: list[dict] = self._serialize_history(chat_response.history)
                 if not new_history_data and chat_response.history:
@@ -89,20 +113,40 @@ class SmartGeminiBackend:
                 _gemini_tokens: GeminiTokens = chat_response.last_response.tokens
                 token_usage = _gemini_tokens.total_token_count if _gemini_tokens else 0
 
-                if not db_session:
-                    # Create new session if none existed or previous was expired/dropped
-                    db_session = await db_service.create_session(user_name, session_id)
+                # Re-fetch or Create Session
+                # We need to re-fetch because the previous session object is detached/closed
+                target_session_id = db_session_data["session_id"] if db_session_data else session_id
                 
-                await db_service.update_session(db_session, new_history_data, token_usage)
+                # Explicitly initialize final_db_session to ensure we don't use stale objects
+                final_db_session = None
+                
+                if target_session_id:
+                     final_db_session = await db_service.get_session(target_session_id, user_name)
+
+                if not final_db_session:
+                    # Create new session if none existed or previous was dropped
+                    final_db_session = await db_service.create_session(user_name, target_session_id)
+
+                # Determine if we need to reset the token count (start fresh) or just add to it
+                should_reset = db_session_data and db_session_data.get("reset")
+
+                await db_service.update_session(
+                    session=final_db_session, 
+                    history_data=new_history_data, 
+                    token_usage=token_usage,
+                    reset_token_count=should_reset
+                )
                 await db_service.commit()
                 
-                return chat_response.last_response.text, str(db_session.session_id)
+                return chat_response.last_response.text, str(final_db_session.session_id)
 
-            except (IntegrityError, StaleDataError):
+            except (IntegrityError, StaleDataError) as e:
                 await db_service.rollback()
-                logger.warning(f"Race condition detected for user {user_name}. Retrying...")
-                # Retry logic
-                return await self.chat(user_name, prompt, session_id)
+                logger.warning(f"Race condition detected for user {user_name}. Retrying via tenacity...")
+                raise e # Tenacity will catch this and retry
+            except Exception as e:
+                logger.error(f"Error saving session for {user_name}: {e}")
+                raise
 
     def _load_history(self,
                       db_session: ChatSession,
@@ -118,18 +162,41 @@ class SmartGeminiBackend:
 
     @staticmethod
     def _strip_history_length(history: list[Content | ContentDict]):
-        """To prevent big chats, we will make sure, that the history of a chat can not be larger 
-        than env_settings.MAX_HISTORY_LENGTH."""
+        """
+        To prevent big chats, we will make sure, that the history of a chat can not be larger 
+        than env_settings.MAX_HISTORY_LENGTH.
         
-        if len(history) >= env_settings.MAX_HISTORY_LENGTH:
-            # Safe access to text for logging, assuming structure
-            try:
-                _text = history[0]['parts'][0]['text']
-            except (KeyError, IndexError, TypeError):
-                _text = "..."
-            logger.warning(f"History of the chat: {_text[:50]} is too long!")
-            return history[-env_settings.MAX_HISTORY_LENGTH:]
-        return history
+        Ensures that the sliced history starts with a 'user' role to avoid API errors.
+        """
+        max_len = env_settings.MAX_HISTORY_LENGTH
+        if len(history) <= max_len:
+            return history
+
+        # Slice the last max_len elements
+        sliced_history = history[-max_len:]
+        
+        # Ensure the first element is from the user
+        # If the first element is 'model' or 'function', we skip until we find 'user'
+        # This is a simple heuristic. A more robust one would check for valid turn sequences.
+        while sliced_history:
+            first_item = sliced_history[0]
+            role = None
+            
+            if isinstance(first_item, dict):
+                role = first_item.get("role")
+            elif hasattr(first_item, "role"):
+                role = first_item.role
+            
+            if role == "user":
+                break
+            
+            # Remove invalid start
+            sliced_history.pop(0)
+            
+        if len(sliced_history) < len(history[-max_len:]):
+             logger.warning(f"History was trimmed to ensure valid start. New length: {len(sliced_history)}")
+
+        return sliced_history
     
     @staticmethod
     def _check_token_limit(db_session: ChatSession,

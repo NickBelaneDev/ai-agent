@@ -34,6 +34,7 @@ def mock_db_session():
     session.execute = AsyncMock()
     session.commit = AsyncMock()
     session.add = MagicMock()
+    session.expire = MagicMock() # expire is synchronous
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     return session
@@ -66,6 +67,7 @@ async def test_chat_new_user(backend):
     mock_db.__aenter__.return_value = mock_db
     mock_db.__aexit__.return_value = None
     mock_db.add = MagicMock()
+    mock_db.expire = MagicMock() # expire is synchronous
     
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
@@ -114,13 +116,15 @@ async def test_chat_existing_user_active(backend):
     mock_db.__aenter__.return_value = mock_db
     mock_db.__aexit__.return_value = None
     mock_db.add = MagicMock()
+    mock_db.expire = MagicMock() # expire is synchronous
     
     existing_history = [{"role": "user", "parts": [{"text": "prev"}]}]
     existing_session = ChatSession(
         session_id="existing-session-id",
         user_name=user_name,
         history_json=json.dumps(existing_history),
-        last_active=time.time()
+        last_active=time.time(),
+        token_count=0 # Initialize token_count
     )
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_session
@@ -160,12 +164,14 @@ async def test_chat_existing_user_expired(backend):
     mock_db.__aenter__.return_value = mock_db
     mock_db.__aexit__.return_value = None
     mock_db.add = MagicMock()
+    mock_db.expire = MagicMock() # expire is synchronous
     
     existing_session = ChatSession(
         session_id="expired-session-id",
         user_name=user_name,
         history_json='[{"role": "user", "parts": [{"text": "old stuff"}]}]',
-        last_active=time.time() - (TIMEOUT_SECONDS + 100)
+        last_active=time.time() - (TIMEOUT_SECONDS + 100),
+        token_count=100 # Initialize token_count
     )
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_session
@@ -206,6 +212,7 @@ async def test_chat_concurrent_users(backend):
         mock_db.__aenter__.return_value = mock_db
         mock_db.__aexit__.return_value = None
         mock_db.add = MagicMock()
+        mock_db.expire = MagicMock() # expire is synchronous
         
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -274,3 +281,54 @@ def test_serialize_history_genai_fallback():
     history = [MockItem("user", [MockPart("test")])]
     serialized = SmartGeminiBackend._serialize_history(history)
     assert serialized == [{"role": "user", "parts": [{"text": "test"}]}]
+
+def test_strip_history_length_valid_start():
+    """Test that history slicing ensures the first item is a user role."""
+    # Case 1: History is short enough, no slicing needed
+    history = [{"role": "user", "parts": [{"text": "hi"}]}]
+    stripped = SmartGeminiBackend._strip_history_length(history)
+    assert stripped == history
+
+    # Case 2: History needs slicing, but naturally starts with user
+    # Assume MAX_HISTORY_LENGTH is small for this test, e.g., 2
+    with patch("src.config.settings.env_settings.MAX_HISTORY_LENGTH", 2):
+        history = [
+            {"role": "user", "parts": [{"text": "1"}]},
+            {"role": "model", "parts": [{"text": "2"}]},
+            {"role": "user", "parts": [{"text": "3"}]},
+            {"role": "model", "parts": [{"text": "4"}]}
+        ]
+        stripped = SmartGeminiBackend._strip_history_length(history)
+        assert len(stripped) == 2
+        assert stripped[0]["role"] == "user"
+        assert stripped[0]["parts"][0]["text"] == "3"
+
+    # Case 3: History needs slicing, and the slice would start with model
+    with patch("src.config.settings.env_settings.MAX_HISTORY_LENGTH", 3):
+        history = [
+            {"role": "user", "parts": [{"text": "1"}]},
+            {"role": "model", "parts": [{"text": "2"}]},
+            {"role": "user", "parts": [{"text": "3"}]},
+            {"role": "model", "parts": [{"text": "4"}]}
+        ]
+        # Slice of last 3 is: model(2), user(3), model(4)
+        # Should remove model(2) and return user(3), model(4)
+        stripped = SmartGeminiBackend._strip_history_length(history)
+        assert len(stripped) == 2
+        assert stripped[0]["role"] == "user"
+        assert stripped[0]["parts"][0]["text"] == "3"
+
+    # Case 4: Slice starts with function response (orphaned)
+    with patch("src.config.settings.env_settings.MAX_HISTORY_LENGTH", 3):
+        history = [
+            {"role": "user", "parts": [{"text": "1"}]},
+            {"role": "function", "parts": [{"text": "resp"}]}, # Orphaned start
+            {"role": "model", "parts": [{"text": "2"}]},
+            {"role": "user", "parts": [{"text": "3"}]}
+        ]
+        # Slice of last 3: function, model, user
+        # Should skip function and model, return only user
+        stripped = SmartGeminiBackend._strip_history_length(history)
+        assert len(stripped) == 1
+        assert stripped[0]["role"] == "user"
+        assert stripped[0]["parts"][0]["text"] == "3"
