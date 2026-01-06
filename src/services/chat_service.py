@@ -27,7 +27,7 @@ class SmartGeminiBackend:
         self.agent = agent
 
     async def generate_content(self, prompt: str) -> str:
-        """This methode includes no function calling, it is just for texting! We should update that..."""
+        """Generates a single response, without saving any history nor logging sessions to a db."""
         if len(prompt) > 1000:
             raise HTTPException(status_code=400, detail="Prompt too long.")
         logger.debug(f"generate_content: {prompt}")
