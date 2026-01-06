@@ -28,9 +28,12 @@ class SmartGeminiBackend:
 
     async def generate_content(self, prompt: str) -> str:
         """This methode includes no function calling, it is just for texting! We should update that..."""
+        if len(prompt) > 1000:
+            raise HTTPException(status_code=400, detail="Prompt too long.")
         logger.debug(f"generate_content: {prompt}")
-        response = await self.agent.ask(prompt)
-        return response.text
+        history = []
+        response = await self.agent.chat(history=history, user_prompt=prompt)
+        return response.last_response.text
 
     @retry(
         stop=stop_after_attempt(3),
@@ -44,7 +47,7 @@ class SmartGeminiBackend:
         """
         Handles a single chat turn for a given user.
         Checks if the previous session is expired (older than TIMEOUT_SECONDS).
-        
+
         Returns a tuple of (response_text, session_id).
         """
         logger.debug(f"chat: {user_name=}, {session_id=}, prompt={prompt[:50]}...")
@@ -81,15 +84,15 @@ class SmartGeminiBackend:
                         # Session is active, load history
                         history = self._load_history(initial_db_session, user_name)
                         db_session_data = {
-                            "session_id": initial_db_session.session_id, 
+                            "session_id": initial_db_session.session_id,
                             "token_count": initial_db_session.token_count,
                             "reset": False
                         }
-                
+
                 # 3. CHECK TOKEN LIMIT
                 if initial_db_session and not (db_session_data and db_session_data.get("reset")):
                     self._check_token_limit(initial_db_session)
-            
+
             except Exception as e:
                 logger.error(f"Error loading session for {user_name}: {e}")
                 raise
@@ -113,13 +116,11 @@ class SmartGeminiBackend:
                 _gemini_tokens: GeminiTokens = chat_response.last_response.tokens
                 token_usage = _gemini_tokens.total_token_count if _gemini_tokens else 0
 
-                # Re-fetch or Create Session
-                # We need to re-fetch because the previous session object is detached/closed
                 target_session_id = db_session_data["session_id"] if db_session_data else session_id
                 
                 # Explicitly initialize final_db_session to ensure we don't use stale objects
                 final_db_session = None
-                
+
                 if target_session_id:
                      final_db_session = await db_service.get_session(target_session_id, user_name)
 
@@ -163,9 +164,9 @@ class SmartGeminiBackend:
     @staticmethod
     def _strip_history_length(history: list[Content | ContentDict]):
         """
-        To prevent big chats, we will make sure, that the history of a chat can not be larger 
+        To prevent big chats, we will make sure, that the history of a chat can not be larger
         than env_settings.MAX_HISTORY_LENGTH.
-        
+
         Ensures that the sliced history starts with a 'user' role to avoid API errors.
         """
         max_len = env_settings.MAX_HISTORY_LENGTH
@@ -181,7 +182,7 @@ class SmartGeminiBackend:
         while sliced_history:
             first_item = sliced_history[0]
             role = None
-            
+
             if isinstance(first_item, dict):
                 role = first_item.get("role")
             elif hasattr(first_item, "role"):
@@ -204,7 +205,7 @@ class SmartGeminiBackend:
         """Prevent chats from becoming too big, by cutting a max_tokens for a complete chat.
         In case, that the history is shorter than env_settings.MAX_HISTORY_LENGTH, we secure our
         wallet with a maximum tokens per chat."""
-        
+
         # Check if the accumulated tokens exceed the limit
         logger.info(f"Session_ID: {db_session.session_id} has used {db_session.token_count} Tokens out of {max_tokens}.")
         if db_session.token_count and db_session.token_count >= max_tokens:
