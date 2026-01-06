@@ -42,13 +42,15 @@ async def test_large_payload_prevention(backend):
     mock_db = AsyncMock()
     mock_db.__aenter__.return_value = mock_db
     mock_db.__aexit__.return_value = None
+    mock_db.expire = MagicMock() # expire is synchronous
     
     # Mock existing session with massive history
     existing_session = ChatSession(
         session_id="massive-session",
         user_name=user_name,
         history_json=json.dumps(massive_history),
-        last_active=time.time()
+        last_active=time.time(),
+        token_count=0 # Initialize token_count
     )
     
     mock_result = MagicMock()
@@ -96,6 +98,7 @@ async def test_session_flood_dos(backend):
         mock_db.__aenter__.return_value = mock_db
         mock_db.__aexit__.return_value = None
         mock_db.add = MagicMock()
+        mock_db.expire = MagicMock() # expire is synchronous
         
         # Simulate DB latency
         async def mock_execute(*args, **kwargs):
@@ -179,3 +182,53 @@ async def test_db_connection_pool_exhaustion_simulation(backend):
             await backend.chat(user_name, prompt)
         
         assert "Timeout: pool queue is full" in str(excinfo.value)
+
+@pytest.mark.asyncio
+async def test_db_connection_release_during_llm_call(backend):
+    """
+    Verifies that the database connection is released during the LLM call.
+    This is the critical fix for the connection pool exhaustion issue.
+    """
+    user_name = "efficient_user"
+    prompt = "Take your time"
+    
+    # We need to track when the DB session is entered and exited
+    db_session_mock = AsyncMock()
+    db_session_mock.__aenter__ = AsyncMock(return_value=db_session_mock)
+    db_session_mock.__aexit__ = AsyncMock(return_value=None)
+    db_session_mock.expire = MagicMock() # expire is synchronous
+    
+    # We need to simulate the LLM call taking time
+    async def slow_llm_chat(*args, **kwargs):
+        # Verify that DB session is NOT active here
+        # In our mock, we can check if __aexit__ was called before this
+        if db_session_mock.__aexit__.call_count == 0:
+            raise RuntimeError("DB Session is still open during LLM call!")
+        
+        await asyncio.sleep(0.01)
+        
+        resp = MagicMock()
+        resp.last_response.text = "Done"
+        resp.last_response.tokens.total_token_count = 10
+        resp.history = []
+        return resp
+        
+    backend.agent.chat.side_effect = slow_llm_chat
+    
+    # We need to mock the DB service calls to return something valid
+    # Since we use the same mock for both phases (load and save), we need to handle the calls
+    
+    # Mock execute for get_session (Phase 1) and update (Phase 3)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None # No session initially
+    db_session_mock.execute.return_value = mock_result
+    
+    # Mock add for create_session
+    db_session_mock.add = MagicMock()
+
+    with patch("src.services.chat_service.AsyncSessionLocal", return_value=db_session_mock):
+        await backend.chat(user_name, prompt)
+        
+    # Verify that we opened and closed the DB session twice
+    assert db_session_mock.__aenter__.call_count == 2
+    assert db_session_mock.__aexit__.call_count == 2

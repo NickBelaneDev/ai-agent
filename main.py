@@ -11,16 +11,14 @@ from src.config.settings import env_settings
 from src.services.chat_service import SmartGeminiBackend
 from src.config.logging_config import logger
 from src.db.connection import init_db
-from src.llms.gemini_default.gemini import DefaultGeminiLLM
+from src.llms.gemini_default.gemini import get_default_gemini_llm
 
 # --- Rate Limiting Setup ---
 if env_settings.REDIS_URL:
-    # Profi-Modus: Synchronisiert über alle Instanzen hinweg
-    logger.info(f"Verwende Redis für Rate-Limiting: {env_settings.REDIS_URL}")
+    logger.info(f"Using Redis for Rate-Limiting: {env_settings.REDIS_URL}")
     limiter = Limiter(key_func=get_remote_address, storage_uri=env_settings.REDIS_URL)
 else:
-    # Einfacher Modus: Nur lokaler Speicher (für Einzel-Instanzen)
-    logger.info("Kein Redis konfiguriert. Verwende In-Memory Rate-Limiting.")
+    logger.info("No Redis configure. Using In-Memory Rate-Limiting.")
     limiter = Limiter(key_func=get_remote_address)
 
 async def verify_api_token(x_auth_token: str = Header(alias="X-Auth-Token")):
@@ -46,12 +44,18 @@ async def lifespan(fastapi_app: FastAPI):
     logger.info("Database initialized.")
 
     # Initialize Backend Service
-    gemini_backend = SmartGeminiBackend(DefaultGeminiLLM)
-    fastapi_app.state.gemini_backend = gemini_backend
-    
-    logger.info("SmartGeminiBackend initialized and attached to app state.")
-    
-    yield  # The application runs here
+    # Lazy initialization of the LLM client prevents crashes on import
+    try:
+        llm_client = get_default_gemini_llm()
+        gemini_backend = SmartGeminiBackend(llm_client)
+        fastapi_app.state.gemini_backend = gemini_backend
+        logger.info("SmartGeminiBackend initialized and attached to app state.")
+    except Exception as e:
+        logger.critical(f"Failed to initialize SmartGeminiBackend: {e}")
+        # We might want to raise here to stop startup if LLM is critical
+        raise
+
+    yield
     
     logger.info("Application shutdown...")
 
@@ -117,4 +121,4 @@ async def chat_text(request: Request,
     return PlainTextResponse(response_text, headers={"X-Session-ID": session_id})
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8080)

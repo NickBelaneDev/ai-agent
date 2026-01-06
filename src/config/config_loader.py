@@ -27,9 +27,3 @@ def load_config(path: Path) -> LLMConfigModel:
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
         raise
-
-
-if __name__ == "__main__":
-    # This will fail if run directly without arguments, but that's expected for a library module
-    # or we could add a default path for testing
-    pass
