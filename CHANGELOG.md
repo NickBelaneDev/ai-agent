@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0-alpha] - 2026-01-08
+
+### Added
+- **Configuration:** Decentralized LLM configuration and improved settings management.
+- **Security:** Added token counting and limits per chat session (`MAX_TOKENS_PER_CHAT_SESSION`).
+- **Reliability:** Enhanced chat management with retry logic for database operations using `tenacity`.
+- **Logic:** Implemented `SmartGeminiBackend` with improved session handling, expiration checks, and history trimming.
+
+### Changed
+- **Refactoring:** Major refactoring of `ChatService` to `SmartGeminiBackend` for better separation of concerns.
+- **Database:** Optimized database interactions to handle race conditions and stale data errors.
+- **Response Model:** Updated response models and logic optimization for better performance.
+
+### Fixed
+- **Concurrency:** Addressed race conditions in session management.
+- **History:** Improved history serialization and trimming logic to ensure valid API requests.
+
 ## [0.2.0-beta] - 2026-01-05
 
 ### Added

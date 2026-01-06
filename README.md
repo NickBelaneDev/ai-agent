@@ -10,6 +10,8 @@ A FastAPI-based service that provides an interface to Google's Gemini AI, design
 *   **Decentralized Agent Architecture**: The agent logic is decoupled and can be instantiated dynamically.
 *   **Rate Limiting**: Built-in rate limiting using `slowapi`, with optional Redis support for distributed environments.
 *   **Enhanced Security**: Includes SQL injection prevention, session isolation, and header-based authentication.
+*   **Reliability**: Implements retry logic for database operations to handle race conditions and stale data.
+*   **Token Management**: Enforces token limits per chat session to manage costs and performance.
 *   **Docker Ready**: Includes Dockerfile and docker-compose setup for easy deployment.
 *   **Async Architecture**: Built on FastAPI and Uvicorn for high-performance asynchronous processing.
 
@@ -38,6 +40,8 @@ A FastAPI-based service that provides an interface to Google's Gemini AI, design
     GEMINI_API_KEY=your_api_key_here
     APP_API_TOKEN=your_secret_api_token_here
     DATABASE_URL=sqlite+aiosqlite:///./chat_database.db
+    MAX_HISTORY_LENGTH=20
+    MAX_TOKENS_PER_CHAT_SESSION=10000
     # Optional: Redis for rate limiting
     # REDIS_URL=redis://localhost:6379/0
     ```
