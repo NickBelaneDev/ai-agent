@@ -8,8 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import ChatSession, User
-
-logger = logging.getLogger(__name__)
+from src.config.logging_config import logger
 
 class ChatSessionDBService:
     """
@@ -43,22 +42,52 @@ class ChatSessionDBService:
         """
         Retrieves a chat session.
         If session_id is provided, fetches that specific session.
+
+        Retrieves a chat session.
+        If session_id is provided, fetches that specific session.
         If only user_name is provided, fetches the most recent session for that user.
+        If neither is provided, returns None.
+
+        Args:
+            session_id: The unique identifier of the chat session. Optional.
+            user_name: The name of the user associated with the session. Optional.
+
+        Returns:
+            The ChatSession object if found, otherwise None.
+
+        Raises:
+            HTTPException: If a session_id is provided but no matching session is found for the given user.
         """
+
+        if not session_id and not user_name:
+            logger.info(f">> No session_id or user_name provided. Returning None.")
+            return None
+
+        if session_id and not user_name:
+            logger.warning(f"Security Alert: Someone tried to access a session without delivering the user's name. Returning None.")
+            return None
+
         if session_id:
-            result = await self.db.execute(select(ChatSession)
-                                           .where(ChatSession.session_id == session_id))
+            logger.debug(f">> Fetching session by ID: {session_id} for user: {user_name if user_name else 'N/A'}")
+
+            statement = select(ChatSession).where(ChatSession.session_id == session_id)
+            if user_name:
+                statement = statement.where(ChatSession.user_name == user_name)
+
+            result = await self.db.execute(statement)
             session = result.scalar_one_or_none()
 
-            if session and user_name and (session.user_name != user_name):
-                logger.warning(
-                    f"Security Alert: User {user_name} tried to access session {session_id}")
-                raise HTTPException(status_code=403, detail="Forbidden")
-            elif session:
+            if session:
                 return session
 
+            # If no session is found, it's either because it doesn't exist or it belongs to another user.
+            # Replying with 404 Not Found in both cases is a good security practice to avoid information leakage.
+            if user_name:
+                logger.warning(
+                    f"Security Alert: User '{user_name}' attempted to access session '{session_id}' but the session doesn't exist.")
             raise HTTPException(status_code=404, detail="Session not found")
-        
+
+        # Load the latest session for the user
         if user_name:
             logger.debug(f">> Fetching latest session for user: {user_name}")
             statement = (select(ChatSession)
@@ -78,7 +107,11 @@ class ChatSessionDBService:
         return None
 
 
-    async def create_session(self, user_name: str, session_id: str = None) -> ChatSession:
+    async def create_session(
+            self,
+            user_name: str,
+            session_id: str = None) \
+            -> ChatSession:
         """
         Creates a new chat session for a user.
         """
@@ -99,7 +132,12 @@ class ChatSessionDBService:
         logger.info(f"Session {new_session_id} created for user {user_name}.")
         return new_session
 
-    async def update_session(self, session: ChatSession, history_data: list[dict], token_usage: int, reset_token_count: bool = False):
+    async def update_session(
+            self,
+            session: ChatSession,
+            history_data: list[dict],
+            token_usage: int,
+            reset_token_count: bool = False):
         """
         Updates an existing session with new history and token usage.
         Uses an atomic update for token_count to prevent race conditions.

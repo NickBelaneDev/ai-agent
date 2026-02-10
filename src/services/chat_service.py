@@ -1,6 +1,5 @@
 import time
 import json
-import asyncio
 
 from google.genai.types import Content, ContentDict
 from sqlalchemy.exc import IntegrityError
