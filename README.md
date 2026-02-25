@@ -1,124 +1,183 @@
-# AI Agents Service
+<div align="center">
 
-A FastAPI-based service that provides an interface to Google's Gemini AI, designed to act as a smart backend for chat applications. It manages user sessions, handles context, supports function calling capabilities, and includes robust security and performance features.
+# 🤖 AI Agent Service
+### *FastAPI backend for Gemini-based chat applications*
 
-## Features
+![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.123-009688?logo=fastapi&logoColor=white)
+![Gemini](https://img.shields.io/badge/LLM-Google_Gemini-8E75B2)
+![Quality](https://img.shields.io/badge/Code_Quality-Ruff%20%7C%20Black%20%7C%20MyPy-111827)
+![Security](https://img.shields.io/badge/Security-Bandit%20%7C%20pip--audit-B91C1C)
 
-*   **Smart Session Management**: Automatically handles user sessions with configurable timeouts and database persistence.
-*   **Gemini Integration**: Utilizes Google's GenAI SDK (via `generic-llm-lib`) for advanced LLM capabilities.
-*   **Function Calling**: Supports dynamic tool execution via the LLM (configured via `tool_registry`).
-*   **Decentralized Agent Architecture**: The agent logic is decoupled and can be instantiated dynamically.
-*   **Rate Limiting**: Built-in rate limiting using `slowapi`, with optional Redis support for distributed environments.
-*   **Enhanced Security**: Includes SQL injection prevention, session isolation, and header-based authentication.
-*   **Reliability**: Implements retry logic for database operations to handle race conditions and stale data.
-*   **Token Management**: Enforces token limits per chat session to manage costs and performance.
-*   **Docker Ready**: Includes Dockerfile and docker-compose setup for easy deployment.
-*   **Async Architecture**: Built on FastAPI and Uvicorn for high-performance asynchronous processing.
+</div>
 
-## Prerequisites
+---
 
-*   Python 3.12+
-*   Docker & Docker Compose (optional, for containerized deployment)
-*   Google Gemini API Key
-*   Redis (optional, for distributed rate limiting)
+## ✨ About this project
 
-## Installation
+This service provides a clean and extensible API layer on top of **Google Gemini** for chat applications.
+It includes session persistence, token limits, configurable tool calling, and quality/security checks for CI pipelines.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/NickBelaneDev/ai-agent
-    cd ai-agents
-    ```
+---
 
-2.  **Set up the environment:**
-    Create a `.env` file in the root directory using `empty.env` as a template:
-    ```bash
-    cp empty.env .env
-    ```
-    Edit `.env` and fill in your details:
-    ```properties
-    GEMINI_API_KEY=your_api_key_here
-    APP_API_TOKEN=your_secret_api_token_here
-    DATABASE_URL=sqlite+aiosqlite:///./chat_database.db
-    MAX_HISTORY_LENGTH=20
-    MAX_TOKENS_PER_CHAT_SESSION=10000
-    # Optional: Redis for rate limiting
-    # REDIS_URL=redis://localhost:6379/0
-    ```
-    **Important**: The `APP_API_TOKEN` is crucial for securing your service. Choose a strong, unique token.
+## 🧩 Core Features
 
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+- 🧠 **Gemini Integration** via `google-genai` and `generic-llm-lib`
+- 💬 **Stateful Chat Sessions** with persistent storage
+- 🛡️ **Security-first design** (auth token headers, SQLi-focused tests, isolation checks)
+- ⚡ **Async FastAPI architecture** for high-throughput workloads
+- 🧰 **Tool calling support** through dynamic tool registry
+- 📉 **Token-limit enforcement** for predictable cost and performance
+- 🐳 **Docker support** for reproducible deployment
 
-## Usage
+---
 
-### Running Locally
+## 🏗️ Architecture Overview
 
-Start the server using Uvicorn:
+```text
+Client App
+   │
+   ▼
+FastAPI API Layer (main.py)
+   │
+   ├── Auth / Rate limiting / Validation
+   ├── Chat Service (src/services)
+   ├── LLM Adapter (src/llms/gemini_default)
+   └── DB Layer (src/db)
+```
+
+---
+
+## 🚀 Quickstart
+
+### 1) Clone
+
+```bash
+git clone https://github.com/NickBelaneDev/ai-agent
+cd ai-agent
+```
+
+### 2) Configure environment
+
+```bash
+cp empty.env .env
+```
+
+Set at least:
+
+```env
+GEMINI_API_KEY=your_api_key_here
+APP_API_TOKEN=your_strong_token_here
+DATABASE_URL=sqlite+aiosqlite:///./chat_database.db
+MAX_HISTORY_LENGTH=20
+MAX_TOKENS_PER_CHAT_SESSION=10000
+```
+
+### 3) Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4) Run locally
 
 ```bash
 uvicorn main:app --reload --port 8000
 ```
 
-The API will be available at `http://localhost:8000`.
+Service URL: `http://localhost:8000`
 
-### Running with Docker
+---
 
-1.  **Build and start the container:**
-    ```bash
-    docker-compose up --build -d
-    ```
+## 🔐 Authentication
 
-2.  The service will be accessible at `http://localhost:8083` (as configured in `docker-compose.yml`).
+All `/gemini/*` endpoints require header authentication:
 
-### Database Inspection
+- Header: `X-Auth-Token`
+- Value: `APP_API_TOKEN` from `.env`
 
-A utility script is provided to quickly inspect the contents of the database (Users and Chat Sessions) for debugging purposes.
+Example:
+
+```bash
+curl -X POST "http://localhost:8000/gemini/chat" \
+  -H "X-Auth-Token: your_strong_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{"user_name":"test_user","prompt":"Hello Gemini"}'
+```
+
+---
+
+## 🧪 Developer Workflow
+
+A complete quality workflow is available via **Makefile** and **GitHub Actions**.
+
+### Make targets
+
+```bash
+make install      # runtime + quality tooling
+make quality      # ruff + black --check + mypy
+make fix          # ruff --fix + black
+make complexity   # xenon checks
+make security     # bandit + pip-audit
+make doc          # interrogate docstring coverage
+make test         # pytest
+```
+
+### CI Pipeline
+
+GitHub workflow: `.github/workflows/quality-gate.yml`
+
+It runs:
+- Ruff
+- Black
+- MyPy
+- Xenon
+- Bandit
+- pip-audit
+- Interrogate
+- Pytest
+
+---
+
+## 🐳 Docker
+
+```bash
+docker-compose up --build -d
+```
+
+Default mapped service endpoint: `http://localhost:8083`
+
+---
+
+## 🗂️ Project Structure
+
+```text
+src/
+├── config/      # Settings, logging, configuration loading
+├── db/          # DB models, connection and persistence services
+├── llms/        # Gemini adapter and model config
+├── services/    # Chat orchestration and domain services
+└── tools/       # LLM callable tools
+
+tests/           # Security, config, db and service tests
+```
+
+---
+
+## ✅ Testing
+
+```bash
+pytest
+```
+
+Optional DB inspection utility:
 
 ```bash
 python inspect_db.py
 ```
 
-## Authentication
+---
 
-All API endpoints under `/gemini/` require authentication using an `APP_API_TOKEN`. You must include an `X-Auth-Token` header with your requests, containing the value of your `APP_API_TOKEN` defined in your `.env` file.
+## 📜 License
 
-**Example using `curl`:**
-
-```bash
-curl -X POST "http://localhost:8000/gemini/chat" \
-     -H "X-Auth-Token: your_secret_api_token_here" \
-     -H "Content-Type: application/json" \
-     -d '{
-           "user_name": "test_user",
-           "prompt": "Hello, Gemini!"
-         }'
-```
-
-## API Endpoints
-
-*   `GET /`: Health check and welcome message.
-*   `POST /gemini/generate_content`: Simple one-off content generation.
-    *   **Params**: `prompt` (str)
-*   `POST /gemini/chat`: Stateful chat endpoint returning a JSON response.
-    *   **Params**: `user_name` (str), `prompt` (str), `session_id` (optional str)
-*   `POST /gemini/chat/text`: Stateful chat endpoint returning a plain text response.
-    *   **Params**: `user_name` (str), `prompt` (str), `session_id` (optional str)
-
-## Configuration
-
-*   **`src/config/settings.py`**: Manages environment variables and global settings.
-*   **`src/llms/gemini_default/llm_config.toml`**: (Default) Configuration for the LLM model parameters (temperature, tokens, etc.).
-*   **`src/llms/gemini_default/tool_registry.py`**: Handles the registration of tools available to the LLM.
-
-## Testing
-
-The project includes a comprehensive test suite covering services, database operations, security, and race conditions.
-
-Run tests using `pytest`:
-
-```bash
-pytest
-```
+Use and adapt according to your repository license policy.
